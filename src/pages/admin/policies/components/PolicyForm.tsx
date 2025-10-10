@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
+import { handleFormValidationErrors } from '@/lib/formUtils';
 
 const policySchema = z.object({
   leaveType: z.string().min(1, 'Leave type is required'),
@@ -65,8 +66,19 @@ const PolicyForm: React.FC<PolicyFormProps> = ({
   const watchedCarryForward = watch('canCarryForward');
 
   const onSubmit = async (data: PolicyFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     try {
       setIsSubmitting(true);
+      
+      // Show loading toast
+      toast({
+        title: isEditing ? 'Updating policy...' : 'Creating policy...',
+        description: 'Please wait while we process your request.',
+      });
       
       // Implement API call
       // if (isEditing) {

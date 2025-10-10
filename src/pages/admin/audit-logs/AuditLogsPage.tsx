@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { 
   Shield, 
@@ -70,93 +70,6 @@ const AuditLogsPage: React.FC = () => {
     severity: 'all',
   });
 
-  // Mock data
-  const mockAuditLogs: AuditLog[] = [
-    {
-      id: '1',
-      timestamp: '2024-12-15T10:30:00Z',
-      action: 'User Login',
-      userName: 'John Admin',
-      userRole: 'admin',
-      userEmail: 'john.admin@company.com',
-      resource: 'Authentication',
-      details: 'Successful login from Chrome browser',
-      ipAddress: '192.168.1.100',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      status: 'success',
-      severity: 'low',
-    },
-    {
-      id: '2',
-      timestamp: '2024-12-15T10:25:00Z',
-      action: 'Leave Request Created',
-      userName: 'Sarah Johnson',
-      userRole: 'employee',
-      userEmail: 'sarah.johnson@company.com',
-      resource: 'Leave Management',
-      details: 'Created annual leave request for Dec 20-27, 2024',
-      ipAddress: '192.168.1.101',
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      status: 'success',
-      severity: 'medium',
-    },
-    {
-      id: '3',
-      timestamp: '2024-12-15T10:20:00Z',
-      action: 'Leave Request Approved',
-      userName: 'Mike Manager',
-      userRole: 'manager',
-      userEmail: 'mike.manager@company.com',
-      resource: 'Leave Management',
-      details: 'Approved sick leave request for Emma Wilson',
-      ipAddress: '192.168.1.102',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      status: 'success',
-      severity: 'medium',
-    },
-    {
-      id: '4',
-      timestamp: '2024-12-15T10:15:00Z',
-      action: 'Failed Login Attempt',
-      userName: 'Unknown',
-      userRole: 'unknown',
-      userEmail: 'hacker@example.com',
-      resource: 'Authentication',
-      details: 'Multiple failed login attempts detected',
-      ipAddress: '203.0.113.1',
-      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-      status: 'error',
-      severity: 'high',
-    },
-    {
-      id: '5',
-      timestamp: '2024-12-15T10:10:00Z',
-      action: 'User Profile Updated',
-      userName: 'Emma Wilson',
-      userRole: 'employee',
-      userEmail: 'emma.wilson@company.com',
-      resource: 'User Management',
-      details: 'Updated personal information and contact details',
-      ipAddress: '192.168.1.103',
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15',
-      status: 'success',
-      severity: 'low',
-    },
-    {
-      id: '6',
-      timestamp: '2024-12-15T10:05:00Z',
-      action: 'Policy Configuration Changed',
-      userName: 'John Admin',
-      userRole: 'admin',
-      userEmail: 'john.admin@company.com',
-      resource: 'System Configuration',
-      details: 'Modified annual leave policy settings',
-      ipAddress: '192.168.1.100',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      status: 'warning',
-      severity: 'high',
-    },
-  ];
 
   useEffect(() => {
     fetchAuditLogs();
@@ -165,10 +78,17 @@ const AuditLogsPage: React.FC = () => {
   const fetchAuditLogs = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setAuditLogs(mockAuditLogs);
+      // TODO: Replace with actual API call when backend is ready
+      // const response = await adminAPI.getAuditLogs();
+      // if (response.success && response.data) {
+      //   setAuditLogs(response.data);
+      // } else {
+      //   setAuditLogs([]);
+      // }
+      setAuditLogs([]);
     } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      setAuditLogs([]);
       toast({
         title: 'Error',
         description: 'Failed to fetch audit logs',
@@ -288,7 +208,9 @@ const AuditLogsPage: React.FC = () => {
   const uniqueUsers = [...new Set(auditLogs.map(log => log.userName))];
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
       {/* Header */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl blur-3xl"></div>
@@ -523,6 +445,8 @@ const AuditLogsPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   );
 };

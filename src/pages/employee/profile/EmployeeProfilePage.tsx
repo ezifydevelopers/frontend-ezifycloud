@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,14 +18,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  TrendingUp,
-  Activity,
-  ArrowUpRight,
-  ArrowDownRight,
-  Star,
   Zap,
-  Target,
-  Award,
   Building2,
   Clock3,
   CalendarDays,
@@ -33,15 +26,18 @@ import {
   Eye,
   Edit,
   Save,
-  Camera,
   Shield,
   Award as AwardIcon,
   Trophy,
   BookOpen,
   Briefcase,
   GraduationCap,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { employeeAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { User as UserType } from '@/types/auth';
 
 interface EmployeeProfile {
   id: string;
@@ -63,12 +59,6 @@ interface EmployeeProfile {
     sick: number;
     casual: number;
   };
-  performance: {
-    rating: number;
-    goals: number;
-    completedGoals: number;
-    efficiency: number;
-  };
   recentActivity: {
     id: string;
     action: string;
@@ -78,95 +68,155 @@ interface EmployeeProfile {
 }
 
 const EmployeeProfilePage: React.FC = () => {
-  const [profile, setProfile] = useState<EmployeeProfile>({
-    id: '1',
-    name: 'John Doe',
-    email: 'john.doe@company.com',
-    phone: '+1 (555) 123-4567',
-    address: '123 Main St, City, State 12345',
-    department: 'Engineering',
-    position: 'Senior Developer',
-    manager: 'Jane Manager',
-    joinDate: '2022-03-15',
-    avatar: 'JD',
-    bio: 'Passionate software developer with 5+ years of experience in full-stack development. Always eager to learn new technologies and contribute to innovative projects.',
-    skills: ['React', 'TypeScript', 'Node.js', 'Python', 'AWS', 'Docker'],
-    certifications: ['AWS Certified Developer', 'Google Cloud Professional', 'Certified Scrum Master'],
-    achievements: ['Employee of the Month - March 2024', 'Innovation Award - Q2 2024', 'Team Player Award - 2023'],
-    leaveBalance: {
-      annual: 13,
-      sick: 8,
-      casual: 5,
-    },
-    performance: {
-      rating: 4.7,
-      goals: 8,
-      completedGoals: 6,
-      efficiency: 92,
-    },
-    recentActivity: [
-      {
-        id: '1',
-        action: 'Submitted annual leave request',
-        date: '2024-12-15T10:30:00Z',
-        type: 'leave',
-      },
-      {
-        id: '2',
-        action: 'Updated profile information',
-        date: '2024-12-10T14:20:00Z',
-        type: 'profile',
-      },
-      {
-        id: '3',
-        action: 'Received Employee of the Month award',
-        date: '2024-12-01T09:00:00Z',
-        type: 'achievement',
-      },
-    ],
-  });
-
-  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(profile);
+  const [editData, setEditData] = useState<Partial<EmployeeProfile>>({});
+  const [newSkill, setNewSkill] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    if (user !== undefined) {
+      fetchProfile();
+    }
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Profile data is already initialized
+      
+      if (!user) {
+        console.warn('User not authenticated, skipping API calls');
+        setProfile(null);
+        return;
+      }
+
+      console.log('🔍 Profile: Fetching profile data...');
+      console.log('🔍 Profile: Current user:', user);
+      console.log('🔍 Profile: Auth token:', localStorage.getItem('token'));
+      
+      const response = await employeeAPI.getProfile();
+      
+      console.log('🔍 Profile: API response:', response);
+
+      if (response.success && response.data) {
+        console.log('✅ Profile: Setting profile data:', response.data);
+        
+        // Transform backend data to match frontend interface
+        const profileData: EmployeeProfile = {
+          id: response.data.id,
+          name: response.data.name,
+          email: response.data.email,
+          phone: response.data.phone || '',
+          address: typeof response.data.address === 'string' ? response.data.address : (response.data.address ? JSON.stringify(response.data.address) : ''),
+          department: response.data.department || 'Unassigned',
+          position: 'Employee', // Default position
+          manager: response.data.managerName || 'No Manager',
+          joinDate: response.data.joinDate || response.data.createdAt,
+          avatar: response.data.avatar || response.data.name.split(' ').map((n: string) => n[0]).join(''),
+          bio: response.data.bio || 'No bio available',
+          skills: response.data.skills || [],
+          certifications: [], // Not available in backend yet
+          achievements: [], // Not available in backend yet
+          leaveBalance: {
+            annual: 25, // Default values - would come from leave balance API
+            sick: 10,
+            casual: 8,
+          },
+          recentActivity: [
+            {
+              id: '1',
+              action: 'Profile updated',
+              date: response.data.updatedAt || new Date().toISOString(),
+              type: 'profile',
+            },
+          ],
+        };
+        
+        setProfile(profileData);
+        setEditData(profileData);
+      } else {
+        console.warn('❌ Profile: API failed or returned no data');
+        setProfile(null);
+      }
     } catch (error) {
+      console.error('Error fetching profile:', error);
       toast({
         title: 'Error',
         description: 'Failed to fetch profile',
         variant: 'destructive',
       });
+      setProfile(null);
     } finally {
       setLoading(false);
     }
   };
 
+
   const handleSave = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      setProfile(editData);
-      setIsEditing(false);
-      toast({
-        title: 'Profile updated',
-        description: 'Your profile has been updated successfully',
+      console.log('🔍 Profile: Updating profile with data:', editData);
+      
+      const response = await employeeAPI.updateProfile({
+        name: editData.name,
+        phone: editData.phone,
+        bio: editData.bio,
+        skills: editData.skills,
+        address: editData.address,
+        emergencyContact: editData.emergencyContact,
       });
+      
+      console.log('🔍 Profile: Update response:', response);
+      
+      if (response.success && response.data) {
+        // Transform updated data to match frontend interface
+        const updatedProfile: EmployeeProfile = {
+          id: response.data.id,
+          name: response.data.name,
+          email: response.data.email,
+          phone: response.data.phone || '',
+          address: typeof response.data.address === 'string' ? response.data.address : (response.data.address ? JSON.stringify(response.data.address) : ''),
+          department: response.data.department || 'Unassigned',
+          position: 'Employee',
+          manager: response.data.managerName || 'No Manager',
+          joinDate: response.data.joinDate || response.data.createdAt,
+          avatar: response.data.avatar || response.data.name.split(' ').map((n: string) => n[0]).join(''),
+          bio: response.data.bio || 'No bio available',
+          skills: response.data.skills || [],
+          certifications: profile?.certifications || [],
+          achievements: profile?.achievements || [],
+          leaveBalance: profile?.leaveBalance || { annual: 25, sick: 10, casual: 8 },
+          recentActivity: [
+            {
+              id: '1',
+              action: 'Profile updated',
+              date: new Date().toISOString(),
+              type: 'profile',
+            },
+            ...(profile?.recentActivity || []).slice(0, 2), // Keep last 2 activities
+          ],
+        };
+        
+        setProfile(updatedProfile);
+        setEditData(updatedProfile);
+        setIsEditing(false);
+        setHasUnsavedChanges(false);
+        
+        toast({
+          title: 'Profile updated',
+          description: 'Your profile has been updated successfully',
+        });
+      } else {
+        throw new Error(response.message || 'Failed to update profile');
+      }
     } catch (error) {
+      console.error('Error updating profile:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update profile',
+        description: error instanceof Error ? error.message : 'Failed to update profile',
         variant: 'destructive',
       });
     } finally {
@@ -181,6 +231,35 @@ const EmployeeProfilePage: React.FC = () => {
     }));
   };
 
+  const handleAddSkill = () => {
+    if (newSkill.trim() && profile) {
+      const updatedSkills = [...profile.skills, newSkill.trim()];
+      setProfile(prev => prev ? { ...prev, skills: updatedSkills } : null);
+      setEditData(prev => ({ ...prev, skills: updatedSkills }));
+      setNewSkill('');
+      setHasUnsavedChanges(true);
+      
+      toast({
+        title: 'Skill added',
+        description: `${newSkill.trim()} has been added to your skills. Don't forget to save!`,
+      });
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove: string) => {
+    if (profile) {
+      const updatedSkills = profile.skills.filter(skill => skill !== skillToRemove);
+      setProfile(prev => prev ? { ...prev, skills: updatedSkills } : null);
+      setEditData(prev => ({ ...prev, skills: updatedSkills }));
+      setHasUnsavedChanges(true);
+      
+      toast({
+        title: 'Skill removed',
+        description: `${skillToRemove} has been removed from your skills. Don't forget to save!`,
+      });
+    }
+  };
+
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'leave':
@@ -188,9 +267,9 @@ const EmployeeProfilePage: React.FC = () => {
       case 'profile':
         return User;
       case 'achievement':
-        return Award;
+        return CheckCircle;
       default:
-        return Activity;
+        return CheckCircle;
     }
   };
 
@@ -207,141 +286,114 @@ const EmployeeProfilePage: React.FC = () => {
     }
   };
 
-  // Mock statistics
-  const stats = [
-    {
-      title: 'Performance Rating',
-      value: profile.performance.rating,
-      description: 'Out of 5.0',
-      icon: Star,
-      color: 'bg-gradient-to-br from-yellow-500 to-orange-500',
-      trend: { value: 8.3, isPositive: true },
-    },
-    {
-      title: 'Goals Completed',
-      value: `${profile.performance.completedGoals}/${profile.performance.goals}`,
-      description: 'This year',
-      icon: Target,
-      color: 'bg-gradient-to-br from-green-500 to-emerald-600',
-    },
-    {
-      title: 'Efficiency',
-      value: `${profile.performance.efficiency}%`,
-      description: 'Work efficiency',
-      icon: Activity,
-      color: 'bg-gradient-to-br from-blue-500 to-blue-600',
-    },
-    {
-      title: 'Years of Service',
-      value: Math.floor((new Date().getTime() - new Date(profile.joinDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)),
-      description: 'With company',
-      icon: Award,
-      color: 'bg-gradient-to-br from-purple-500 to-pink-600',
-    },
-  ];
+  // Calculate statistics
+  const stats: never[] = [];
+
+  if (loading && !profile) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <XCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">Profile Not Found</h3>
+          <p className="text-slate-600">Unable to load your profile information.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
       {/* Header */}
       <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 to-pink-600/10 rounded-2xl blur-3xl"></div>
-        <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="relative">
-                <Avatar className="h-20 w-20 border-4 border-white shadow-lg">
-                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-600 text-white text-2xl font-bold">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl blur-3xl"></div>
+        <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-6 border border-white/30 shadow-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex items-center gap-6">
+              <div className="relative group">
+                <Avatar className="h-24 w-24 border-4 border-white shadow-xl">
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl font-bold">
                     {profile.avatar}
                   </AvatarFallback>
                 </Avatar>
-                <Button
-                  size="sm"
-                  className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-purple-600 hover:bg-purple-700"
-                >
-                  <Camera className="h-4 w-4" />
-                </Button>
               </div>
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              <div className="space-y-2">
+                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
                   {profile.name}
                 </h1>
-                <p className="text-muted-foreground mt-2 text-lg">{profile.position}</p>
-                <p className="text-slate-600">{profile.department} • {profile.manager}</p>
-                <div className="flex items-center space-x-4 mt-3">
-                  <Badge className="bg-green-100 text-green-800 border-green-200">
+                <p className="text-slate-600 text-lg font-medium">{profile.position}</p>
+                <p className="text-slate-500">{profile.department} • {profile.manager}</p>
+                <div className="flex items-center gap-3 mt-3">
+                  <Badge className="bg-green-100 text-green-800 border-green-200 px-3 py-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
                     Active
                   </Badge>
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="px-3 py-1">
                     Joined {new Date(profile.joinDate).toLocaleDateString()}
                   </Badge>
                 </div>
               </div>
             </div>
-            <div className="hidden md:flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-muted-foreground">Profile Active</span>
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchProfile}
+                disabled={loading}
+                className="hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors duration-200"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg border border-green-200">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-green-700 font-medium">Profile Active</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => (
-          <div
-            key={index}
-            className="group relative overflow-hidden rounded-2xl bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-          >
-            <div className={`absolute inset-0 ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
-            <div className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{stat.description}</p>
-                </div>
-                <div className={`p-3 rounded-xl ${stat.color} shadow-lg`}>
-                  <stat.icon className={`h-6 w-6 text-white`} />
-                </div>
-              </div>
-              {stat.trend && (
-                <div className="flex items-center mt-4">
-                  {stat.trend.isPositive ? (
-                    <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
-                  ) : (
-                    <ArrowDownRight className="h-4 w-4 text-red-500 mr-1" />
-                  )}
-                  <span className={`text-sm font-medium ${stat.trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.trend.value}%
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* Profile Tabs */}
-      <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-        <CardContent className="p-6">
-          <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="skills">Skills & Certifications</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
-              <TabsTrigger value="activity">Activity</TabsTrigger>
-            </TabsList>
+      <div className="relative group">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+        <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+          <CardContent className="p-6">
+            <Tabs defaultValue="overview" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 rounded-2xl p-1">
+                <TabsTrigger value="overview" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Overview</TabsTrigger>
+                <TabsTrigger value="skills" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Skills & Certifications</TabsTrigger>
+              </TabsList>
 
             {/* Overview Tab */}
             <TabsContent value="overview">
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Personal Information</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                      <User className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-slate-900">Personal Information</h3>
+                  </div>
                   <Button
                     variant="outline"
                     onClick={() => setIsEditing(!isEditing)}
-                    className="hover:bg-purple-50 hover:text-purple-700"
+                    className="hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors duration-200"
                   >
                     <Edit className="mr-2 h-4 w-4" />
                     {isEditing ? 'Cancel' : 'Edit Profile'}
@@ -350,74 +402,74 @@ const EmployeeProfilePage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="name">Full Name</Label>
+                      <Label htmlFor="name" className="text-sm font-medium text-slate-700 mb-2 block">Full Name</Label>
                       <Input
                         id="name"
-                        value={isEditing ? editData.name : profile.name}
+                        value={isEditing ? (editData.name || '') : profile.name}
                         onChange={(e) => handleInputChange('name', e.target.value)}
                         disabled={!isEditing}
-                        className="bg-white/50 border-slate-200/50"
+                        className="bg-white/80 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-colors duration-200"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email">Email Address</Label>
+                      <Label htmlFor="email" className="text-sm font-medium text-slate-700 mb-2 block">Email Address</Label>
                       <Input
                         id="email"
                         type="email"
-                        value={isEditing ? editData.email : profile.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                        disabled={!isEditing}
-                        className="bg-white/50 border-slate-200/50"
+                        value={profile.email}
+                        disabled={true}
+                        className="bg-slate-50 border-slate-200 rounded-xl"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="phone">Phone Number</Label>
+                      <Label htmlFor="phone" className="text-sm font-medium text-slate-700 mb-2 block">Phone Number</Label>
                       <Input
                         id="phone"
-                        value={isEditing ? editData.phone : profile.phone}
+                        value={isEditing ? (editData.phone || '') : profile.phone}
                         onChange={(e) => handleInputChange('phone', e.target.value)}
                         disabled={!isEditing}
-                        className="bg-white/50 border-slate-200/50"
+                        className="bg-white/80 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-colors duration-200"
                       />
                     </div>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="address">Address</Label>
+                      <Label htmlFor="address" className="text-sm font-medium text-slate-700 mb-2 block">Address</Label>
                       <Textarea
                         id="address"
-                        value={isEditing ? editData.address : profile.address}
+                        value={isEditing ? (editData.address || '') : profile.address}
                         onChange={(e) => handleInputChange('address', e.target.value)}
                         disabled={!isEditing}
-                        className="bg-white/50 border-slate-200/50"
+                        className="bg-white/80 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-colors duration-200"
                         rows={3}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="bio">Bio</Label>
+                      <Label htmlFor="bio" className="text-sm font-medium text-slate-700 mb-2 block">Bio</Label>
                       <Textarea
                         id="bio"
-                        value={isEditing ? editData.bio : profile.bio}
+                        value={isEditing ? (editData.bio || '') : profile.bio}
                         onChange={(e) => handleInputChange('bio', e.target.value)}
                         disabled={!isEditing}
-                        className="bg-white/50 border-slate-200/50"
+                        className="bg-white/80 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-colors duration-200"
                         rows={3}
                       />
                     </div>
                   </div>
                 </div>
                 {isEditing && (
-                  <div className="flex justify-end space-x-2">
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                     <Button
                       variant="outline"
                       onClick={() => setIsEditing(false)}
+                      className="hover:bg-slate-50 hover:border-slate-300 transition-colors duration-200"
                     >
                       Cancel
                     </Button>
                     <Button
                       onClick={handleSave}
                       disabled={loading}
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all duration-200"
                     >
                       <Save className="mr-2 h-4 w-4" />
                       Save Changes
@@ -430,23 +482,112 @@ const EmployeeProfilePage: React.FC = () => {
             {/* Skills & Certifications Tab */}
             <TabsContent value="skills">
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Skills & Certifications</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl">
+                      <BookOpen className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-slate-900">Skills & Certifications</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(!isEditing)}
+                      className="hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors duration-200"
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      {isEditing ? 'Cancel' : 'Edit Skills'}
+                    </Button>
+                    {isEditing && (
+                      <Button
+                        onClick={handleSave}
+                        disabled={loading}
+                        className={`bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200 ${hasUnsavedChanges ? 'ring-2 ring-orange-400' : ''}`}
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        {hasUnsavedChanges ? 'Save Skills*' : 'Save Skills'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                
+                {hasUnsavedChanges && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                    <div className="flex items-center">
+                      <AlertCircle className="h-5 w-5 text-orange-600 mr-3" />
+                      <p className="text-orange-800 font-medium">
+                        You have unsaved changes. Click "Save Skills" to persist your changes to the database.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="grid gap-6 md:grid-cols-2">
                   <div>
                     <h4 className="font-medium text-slate-900 mb-4">Technical Skills</h4>
+                    
+                    {/* Add Skill Input */}
+                    {isEditing && (
+                      <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-200/50">
+                        <div className="flex gap-3">
+                          <Input
+                            placeholder="Add a new skill..."
+                            value={newSkill}
+                            onChange={(e) => setNewSkill(e.target.value)}
+                            className="flex-1 bg-white/80 border-blue-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleAddSkill();
+                              }
+                            }}
+                          />
+                          <Button
+                            onClick={handleAddSkill}
+                            disabled={!newSkill.trim()}
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="space-y-3">
                       {profile.skills.map((skill, index) => (
                         <div
                           key={skill}
-                          className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50"
+                          className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
                           style={{ animationDelay: `${index * 100}ms` }}
                         >
                           <span className="font-medium text-slate-900">{skill}</span>
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            Expert
-                          </Badge>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 rounded-lg px-3 py-1">
+                              Expert
+                            </Badge>
+                            {isEditing && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveSkill(skill)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))}
+                      
+                      {profile.skills.length === 0 && (
+                        <div className="text-center py-12">
+                          <div className="p-4 bg-slate-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                            <BookOpen className="h-10 w-10 text-slate-400" />
+                          </div>
+                          <h3 className="text-lg font-semibold text-slate-900 mb-2">No Skills Added</h3>
+                          <p className="text-slate-500">Add your technical skills to showcase your expertise.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -455,11 +596,11 @@ const EmployeeProfilePage: React.FC = () => {
                       {profile.certifications.map((cert, index) => (
                         <div
                           key={cert}
-                          className="flex items-center space-x-3 p-3 rounded-lg bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50"
+                          className="flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
                           style={{ animationDelay: `${index * 100}ms` }}
                         >
-                          <div className="p-2 bg-green-100 rounded-lg">
-                            <Shield className="h-4 w-4 text-green-600" />
+                          <div className="p-2 bg-green-100 rounded-xl">
+                            <Shield className="h-5 w-5 text-green-600" />
                           </div>
                           <span className="font-medium text-slate-900">{cert}</span>
                         </div>
@@ -473,11 +614,11 @@ const EmployeeProfilePage: React.FC = () => {
                     {profile.achievements.map((achievement, index) => (
                       <div
                         key={achievement}
-                        className="flex items-center space-x-3 p-3 rounded-lg bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50"
+                        className="flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
                         style={{ animationDelay: `${index * 100}ms` }}
                       >
-                        <div className="p-2 bg-yellow-100 rounded-lg">
-                          <Trophy className="h-4 w-4 text-yellow-600" />
+                        <div className="p-2 bg-yellow-100 rounded-xl">
+                          <Trophy className="h-5 w-5 text-yellow-600" />
                         </div>
                         <span className="font-medium text-slate-900">{achievement}</span>
                       </div>
@@ -487,130 +628,13 @@ const EmployeeProfilePage: React.FC = () => {
               </div>
             </TabsContent>
 
-            {/* Performance Tab */}
-            <TabsContent value="performance">
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Performance Overview</h3>
-                <div className="grid gap-6 md:grid-cols-2">
-                  <Card className="bg-gradient-to-r from-white to-slate-50/50 border-slate-200/50">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Star className="h-5 w-5 text-yellow-500" />
-                        Performance Rating
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center">
-                        <div className="text-4xl font-bold text-slate-900 mb-2">
-                          {profile.performance.rating}
-                        </div>
-                        <div className="flex items-center justify-center space-x-1 mb-4">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-5 w-5 ${
-                                i < Math.floor(profile.performance.rating)
-                                  ? 'text-yellow-400 fill-current'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className="text-sm text-slate-500">Out of 5.0 stars</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-gradient-to-r from-white to-slate-50/50 border-slate-200/50">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Target className="h-5 w-5 text-green-500" />
-                        Goals Progress
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="flex justify-between text-sm">
-                          <span>Completed Goals</span>
-                          <span>{profile.performance.completedGoals}/{profile.performance.goals}</span>
-                        </div>
-                        <Progress 
-                          value={(profile.performance.completedGoals / profile.performance.goals) * 100} 
-                          className="h-2 bg-slate-200"
-                        />
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-slate-900">
-                            {Math.round((profile.performance.completedGoals / profile.performance.goals) * 100)}%
-                          </div>
-                          <p className="text-sm text-slate-500">Completion rate</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                <Card className="bg-gradient-to-r from-white to-slate-50/50 border-slate-200/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Activity className="h-5 w-5 text-blue-500" />
-                      Work Efficiency
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex justify-between text-sm">
-                        <span>Efficiency Score</span>
-                        <span>{profile.performance.efficiency}%</span>
-                      </div>
-                      <Progress 
-                        value={profile.performance.efficiency} 
-                        className="h-3 bg-slate-200"
-                      />
-                      <div className="text-center">
-                        <p className="text-sm text-slate-500">
-                          {profile.performance.efficiency >= 90 ? 'Excellent' : 
-                           profile.performance.efficiency >= 80 ? 'Good' : 
-                           profile.performance.efficiency >= 70 ? 'Average' : 'Needs Improvement'}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
 
-            {/* Activity Tab */}
-            <TabsContent value="activity">
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold">Recent Activity</h3>
-                <div className="space-y-4">
-                  {profile.recentActivity.map((activity, index) => {
-                    const IconComponent = getActivityIcon(activity.type);
-                    return (
-                      <div
-                        key={activity.id}
-                        className="flex items-center space-x-4 p-4 rounded-lg bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50"
-                        style={{ animationDelay: `${index * 100}ms` }}
-                      >
-                        <div className={`p-2 rounded-lg bg-slate-100`}>
-                          <IconComponent className={`h-4 w-4 ${getActivityColor(activity.type)}`} />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-slate-900">{activity.action}</p>
-                          <p className="text-sm text-slate-500">
-                            {new Date(activity.date).toLocaleDateString()} at {new Date(activity.date).toLocaleTimeString()}
-                          </p>
-                        </div>
-                        <Badge className="bg-slate-100 text-slate-700 border-slate-200">
-                          {activity.type}
-                        </Badge>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+      </div>
+        </div>
+      </div>
     </div>
   );
 };

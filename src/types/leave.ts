@@ -42,13 +42,20 @@ export interface LeaveBalance {
 
 export interface LeavePolicy {
   id: string;
+  name: string;
+  description?: string;
   leaveType: LeaveType;
-  totalDaysPerYear: number;
-  canCarryForward: boolean;
-  maxCarryForwardDays?: number;
+  maxDaysPerYear: number;
+  maxDaysPerRequest: number;
+  carryForwardDays: number;
+  carryForwardExpiry: number; // months
   requiresApproval: boolean;
-  allowHalfDay: boolean;
-  description: string;
+  requiresDocumentation: boolean;
+  isActive: boolean;
+  applicableRoles: string[];
+  applicableDepartments: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AuditLog {

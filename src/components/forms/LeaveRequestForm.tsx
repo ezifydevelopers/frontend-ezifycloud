@@ -1,48 +1,80 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CalendarIcon, Upload, Loader2, FileText, CheckCircle } from 'lucide-react';
+import { Upload, Loader2, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { employeeAPI } from '@/lib/api';
+import { handleFormValidationErrors } from '@/lib/formUtils';
+import { LeavePolicy } from '@/types/leave';
 
-const leaveRequestSchema = z.object({
-  leaveType: z.enum(['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency']),
-  startDate: z.date({
-    required_error: "Start date is required",
-  }),
-  endDate: z.date({
-    required_error: "End date is required",
-  }),
-  reason: z.string().min(10, 'Reason must be at least 10 characters'),
-  isHalfDay: z.boolean().default(false),
-  halfDayPeriod: z.enum(['morning', 'afternoon']).optional(),
-}).refine(data => data.endDate >= data.startDate, {
-  message: "End date cannot be before start date",
-  path: ["endDate"],
-});
+// Dynamic schema will be created based on available policies
+const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
+  const leaveTypes = policies.map(policy => policy.leaveType);
+  return z.object({
+    leaveType: z.enum(leaveTypes as [string, ...string[]]),
+    startDate: z.date({
+      required_error: "Start date is required",
+    }),
+    endDate: z.date({
+      required_error: "End date is required",
+    }),
+    reason: z.string().min(10, 'Reason must be at least 10 characters'),
+    isHalfDay: z.boolean().default(false),
+    halfDayPeriod: z.enum(['morning', 'afternoon']).optional(),
+    emergencyContact: z.string().optional(),
+    workHandover: z.string().optional(),
+  }).refine(data => data.endDate >= data.startDate, {
+    message: "End date cannot be before start date",
+    path: ["endDate"],
+  }).refine(data => !data.isHalfDay || data.halfDayPeriod, {
+    message: "Half day period is required when half day is selected",
+    path: ["halfDayPeriod"],
+  });
+};
 
-type LeaveRequestFormData = z.infer<typeof leaveRequestSchema>;
+type LeaveRequestFormData = {
+  leaveType: string;
+  startDate: Date;
+  endDate: Date;
+  reason: string;
+  isHalfDay?: boolean;
+  halfDayPeriod?: 'morning' | 'afternoon';
+  emergencyContact?: string;
+  workHandover?: string;
+};
+
+type LeaveRequestAPIData = {
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  isHalfDay: boolean;
+  halfDayPeriod?: 'morning' | 'afternoon';
+  emergencyContact: string;
+  workHandover: string;
+  attachments: string[];
+};
 
 interface LeaveRequestFormProps {
-  onSubmit?: (data: LeaveRequestFormData) => void;
+  onSubmit?: (data: LeaveRequestAPIData) => void;
   className?: string;
 }
 
 const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [documents, setDocuments] = useState<File[]>([]);
+  const [leavePolicies, setLeavePolicies] = useState<LeavePolicy[]>([]);
+  const [loadingPolicies, setLoadingPolicies] = useState(true);
 
   const {
     register,
@@ -51,7 +83,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     setValue,
     formState: { errors },
   } = useForm<LeaveRequestFormData>({
-    resolver: zodResolver(leaveRequestSchema),
+    resolver: zodResolver(createLeaveRequestSchema(leavePolicies)),
   });
 
   const startDate = watch('startDate');
@@ -59,31 +91,81 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   const isHalfDay = watch('isHalfDay');
   const leaveType = watch('leaveType');
 
+  // Fetch leave policies on component mount
+  useEffect(() => {
+    const fetchLeavePolicies = async () => {
+      try {
+        setLoadingPolicies(true);
+        const response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+        if (response.success && response.data) {
+          const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
+          setLeavePolicies(policies);
+          console.log('🔍 LeaveRequestForm: Fetched leave policies:', policies);
+        }
+      } catch (error) {
+        console.error('Error fetching leave policies:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load leave policies. Using default options.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingPolicies(false);
+      }
+    };
+
+    fetchLeavePolicies();
+  }, []);
+
   const calculateTotalDays = () => {
-    if (!startDate || !endDate) return 0;
+    if (!startDate || !endDate || 
+        !(startDate instanceof Date) || !(endDate instanceof Date) ||
+        isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return 0;
+    }
     const timeDiff = endDate.getTime() - startDate.getTime();
     const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
     return isHalfDay ? 0.5 : dayDiff;
   };
 
   const handleFormSubmit = async (data: LeaveRequestFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
-      // Mock submission
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Show loading toast
       toast({
-        title: 'Leave request submitted!',
-        description: 'Your request has been sent to your manager for approval.',
+        title: 'Submitting request...',
+        description: 'Please wait while we process your leave request.',
       });
+      
+      // Transform form data to API format
+      const leaveRequestData: LeaveRequestAPIData = {
+        leaveType: data.leaveType,
+        startDate: data.startDate instanceof Date && !isNaN(data.startDate.getTime()) ? data.startDate.toISOString() : new Date().toISOString(),
+        endDate: data.endDate instanceof Date && !isNaN(data.endDate.getTime()) ? data.endDate.toISOString() : new Date().toISOString(),
+        reason: data.reason,
+        isHalfDay: data.isHalfDay || false,
+        halfDayPeriod: data.isHalfDay ? data.halfDayPeriod : undefined,
+        emergencyContact: data.emergencyContact || '',
+        workHandover: data.workHandover || '',
+        attachments: documents.map(file => file.name),
+      };
 
+      console.log('🔍 LeaveRequestForm: Sending data to parent:', leaveRequestData);
+
+      // Pass data to parent component to handle API call
       if (onSubmit) {
-        onSubmit(data);
+        onSubmit(leaveRequestData);
       }
     } catch (error) {
+      console.error('Error submitting leave request:', error);
       toast({
         title: 'Submission failed',
-        description: 'Please try again later.',
+        description: error instanceof Error ? error.message : 'Please try again later.',
         variant: 'destructive',
       });
     } finally {
@@ -100,14 +182,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     setDocuments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const leaveTypeOptions = [
-    { value: 'annual', label: 'Annual Leave' },
-    { value: 'sick', label: 'Sick Leave' },
-    { value: 'casual', label: 'Casual Leave' },
-    { value: 'maternity', label: 'Maternity Leave' },
-    { value: 'paternity', label: 'Paternity Leave' },
-    { value: 'emergency', label: 'Emergency Leave' },
-  ];
+  // Create leave type options from fetched policies
+  const leaveTypeOptions = leavePolicies.map(policy => ({
+    value: policy.leaveType,
+    label: policy.name
+  }));
 
   return (
     <Card className={className}>
@@ -125,18 +204,31 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
           {/* Leave Type */}
           <div className="space-y-2">
             <Label htmlFor="leaveType">Leave Type *</Label>
-            <Select onValueChange={(value) => setValue('leaveType', value as any)}>
-              <SelectTrigger className={errors.leaveType ? 'border-destructive' : ''}>
-                <SelectValue placeholder="Select leave type" />
-              </SelectTrigger>
-              <SelectContent>
-                {leaveTypeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingPolicies ? (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Loading leave policies...</span>
+              </div>
+            ) : leaveTypeOptions.length === 0 ? (
+              <div className="text-center py-4">
+                <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No leave policies available</p>
+                <p className="text-xs text-muted-foreground">Please contact your administrator</p>
+              </div>
+            ) : (
+              <Select onValueChange={(value) => setValue('leaveType', value as LeaveRequestFormData['leaveType'])}>
+                <SelectTrigger className={errors.leaveType ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select leave type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {leaveTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {errors.leaveType && (
               <p className="text-sm text-destructive">{errors.leaveType.message}</p>
             )}
@@ -147,31 +239,21 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {/* Start Date */}
             <div className="space-y-2">
               <Label>Start Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal',
-                      !startDate && 'text-muted-foreground',
-                      errors.startDate && 'border-destructive'
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, 'PPP') : 'Pick start date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={(date) => setValue('startDate', date!)}
-                    disabled={(date) => date < new Date()}
-                    initialFocus
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                type="date"
+                {...register('startDate', { 
+                  valueAsDate: true,
+                  validate: (value) => {
+                    if (!value) return 'Start date is required';
+                    if (value < new Date()) return 'Start date cannot be in the past';
+                    return true;
+                  }
+                })}
+                className={cn(
+                  errors.startDate && 'border-destructive'
+                )}
+                min={new Date().toISOString().split('T')[0]}
+              />
               {errors.startDate && (
                 <p className="text-sm text-destructive">{errors.startDate.message}</p>
               )}
@@ -180,31 +262,22 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {/* End Date */}
             <div className="space-y-2">
               <Label>End Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal',
-                      !endDate && 'text-muted-foreground',
-                      errors.endDate && 'border-destructive'
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, 'PPP') : 'Pick end date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={(date) => setValue('endDate', date!)}
-                    disabled={(date) => date < (startDate || new Date())}
-                    initialFocus
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                type="date"
+                {...register('endDate', { 
+                  valueAsDate: true,
+                  validate: (value) => {
+                    if (!value) return 'End date is required';
+                    const currentStartDate = watch('startDate');
+                    if (currentStartDate && value < currentStartDate) return 'End date cannot be before start date';
+                    return true;
+                  }
+                })}
+                className={cn(
+                  errors.endDate && 'border-destructive'
+                )}
+                min={startDate && startDate instanceof Date && !isNaN(startDate.getTime()) ? startDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+              />
               {errors.endDate && (
                 <p className="text-sm text-destructive">{errors.endDate.message}</p>
               )}
@@ -227,7 +300,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
           {isHalfDay && (
             <div className="space-y-2">
               <Label htmlFor="halfDayPeriod">Half Day Period</Label>
-              <Select onValueChange={(value) => setValue('halfDayPeriod', value as any)}>
+              <Select onValueChange={(value) => setValue('halfDayPeriod', value as LeaveRequestFormData['halfDayPeriod'])}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select period" />
                 </SelectTrigger>
@@ -240,7 +313,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
           )}
 
           {/* Total Days Display */}
-          {startDate && endDate && (
+          {startDate && endDate && 
+           startDate instanceof Date && endDate instanceof Date &&
+           !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && (
             <Alert>
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
@@ -262,6 +337,27 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {errors.reason && (
               <p className="text-sm text-destructive">{errors.reason.message}</p>
             )}
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="space-y-2">
+            <Label htmlFor="emergencyContact">Emergency Contact</Label>
+            <Input
+              id="emergencyContact"
+              placeholder="Phone number or email for emergency contact"
+              {...register('emergencyContact')}
+            />
+          </div>
+
+          {/* Work Handover */}
+          <div className="space-y-2">
+            <Label htmlFor="workHandover">Work Handover Notes</Label>
+            <Textarea
+              id="workHandover"
+              placeholder="Any important work handover notes or pending tasks..."
+              rows={3}
+              {...register('workHandover')}
+            />
           </div>
 
           {/* Document Upload */}

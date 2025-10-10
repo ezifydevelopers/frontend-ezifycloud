@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Building2, ArrowLeft, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { handleFormValidationErrors } from '@/lib/formUtils';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -33,8 +34,20 @@ const ForgotPasswordForm: React.FC = () => {
   });
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     try {
       setError('');
+      
+      // Show loading toast
+      toast({
+        title: 'Sending reset email...',
+        description: 'Please wait while we process your request.',
+      });
+      
       await resetPassword(data.email);
       setEmailSent(true);
       
@@ -43,7 +56,15 @@ const ForgotPasswordForm: React.FC = () => {
         description: 'Check your inbox for password reset instructions.',
       });
     } catch (err: any) {
-      setError(err.message || 'Failed to send reset email. Please try again.');
+      const errorMessage = err.message || 'Failed to send reset email. Please try again.';
+      setError(errorMessage);
+      
+      // Show error toast
+      toast({
+        title: 'Reset failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     }
   };
 

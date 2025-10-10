@@ -6,7 +6,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
-    // Initialize user state from localStorage immediately
     try {
       const storedUser = localStorage.getItem('user');
       const storedToken = localStorage.getItem('token');
@@ -32,7 +31,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (storedUser && storedToken) {
         try {
           const userData = JSON.parse(storedUser);
-          setUser(userData);
+          
+          // Validate user data structure
+          if (userData && userData.id && userData.email && userData.role) {
+            setUser(userData);
+          } else {
+            // Clear invalid data
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+          }
         } catch (error) {
           // Clear invalid data
           localStorage.removeItem('user');
@@ -50,6 +57,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     try {
+      // Clear all cached data before login
+      setUser(null);
+      localStorage.clear();
+      sessionStorage.clear();
+      
       const data = await authAPI.login(email, password);
 
       if (data.success && data.data) {
@@ -59,8 +71,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         throw new Error(data.message || 'Login failed');
       }
-    } catch (error) {
-      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -70,7 +80,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    // Clear any other cached data
+    localStorage.clear();
+    // Force redirect to login page
+    window.location.href = '/login';
   };
+
+  const clearAuthData = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+  };
+
 
   const signup = async (userData: SignupData): Promise<void> => {
     setIsLoading(true);
@@ -78,14 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await authAPI.register(userData);
 
       if (data.success && data.data) {
-        setUser(data.data.user);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('token', data.data.token);
+        setUser(data.data);
+        localStorage.setItem('user', JSON.stringify(data.data));
+        // Note: register doesn't return a token, user needs to login separately
       } else {
         throw new Error(data.message || 'Registration failed');
       }
-    } catch (error) {
-      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -99,8 +118,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!data.success) {
         throw new Error(data.message || 'Password reset failed');
       }
-    } catch (error) {
-      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -111,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       login,
       logout,
+      clearAuthData,
       signup,
       resetPassword,
       isLoading,

@@ -24,6 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { User } from '@/types/auth';
 import { userAPI } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { handleFormValidationErrors } from '@/lib/formUtils';
 
 const employeeSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -33,6 +34,14 @@ const employeeSchema = z.object({
   department: z.string().min(1, 'Please select a department'),
   managerId: z.string().optional(),
   isActive: z.boolean().default(true),
+}).refine((data) => {
+  // If creating new employee, password is required and must meet backend requirements
+  if (!data.password) return true; // Will be handled in onSubmit
+  return data.password.length >= 6 && 
+         /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])/.test(data.password);
+}, {
+  message: 'Password must be at least 6 characters with uppercase, lowercase, and number',
+  path: ['password']
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -64,7 +73,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
       email: employee?.email || '',
       role: employee?.role || 'employee',
       department: employee?.department || '',
-      managerId: employee?.managerId || '',
+      managerId: employee?.managerId || undefined,
       isActive: employee?.isActive ?? true,
     },
   });
@@ -72,8 +81,19 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
   const watchedRole = watch('role');
 
   const onSubmit = async (data: EmployeeFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     try {
       setIsSubmitting(true);
+      
+      // Show loading toast
+      toast({
+        title: isEditing ? 'Updating employee...' : 'Creating employee...',
+        description: 'Please wait while we process your request.',
+      });
       
       if (isEditing) {
         await userAPI.updateUser(employee!.id, data);
@@ -82,11 +102,20 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
           description: 'Employee updated successfully',
         });
       } else {
-        // For new employees, password is required
+        // For new employees, password is required and must meet backend requirements
         if (!data.password) {
           toast({
             title: 'Error',
             description: 'Password is required for new employees',
+            variant: 'destructive',
+          });
+          return;
+        }
+        
+        if (data.password.length < 6 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])/.test(data.password)) {
+          toast({
+            title: 'Error',
+            description: 'Password must be at least 6 characters with uppercase, lowercase, and number',
             variant: 'destructive',
           });
           return;

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { 
   Clock, 
@@ -52,10 +52,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
+import { employeeAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LeaveRequest {
   id: string;
-  type: string;
+  leaveType: string;
   startDate: string;
   endDate: string;
   days: number;
@@ -67,120 +69,134 @@ interface LeaveRequest {
   priority: 'low' | 'medium' | 'high';
   emergencyContact?: string;
   workHandover?: string;
+  isHalfDay?: boolean;
+  halfDayPeriod?: string;
+  comments?: string;
+  attachments?: string[];
 }
 
 const LeaveHistoryPage: React.FC = () => {
+  const { user } = useAuth();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     status: 'all',
     type: 'all',
-    year: '2024',
+    year: new Date().getFullYear().toString(),
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0
   });
 
-  // Mock data
-  const mockRequests: LeaveRequest[] = [
-    {
-      id: '1',
-      type: 'Annual Leave',
-      startDate: '2024-12-20',
-      endDate: '2024-12-22',
-      days: 3,
-      reason: 'Family vacation',
-      status: 'pending',
-      submittedAt: '2024-12-15T10:30:00Z',
-      priority: 'medium',
-      emergencyContact: '+1-555-0123',
-      workHandover: 'Tasks assigned to John Doe',
-    },
-    {
-      id: '2',
-      type: 'Sick Leave',
-      startDate: '2024-12-10',
-      endDate: '2024-12-10',
-      days: 1,
-      reason: 'Doctor appointment',
-      status: 'approved',
-      submittedAt: '2024-12-09T14:20:00Z',
-      reviewedAt: '2024-12-09T16:30:00Z',
-      reviewedBy: 'Jane Manager',
-      priority: 'high',
-      emergencyContact: '+1-555-0123',
-    },
-    {
-      id: '3',
-      type: 'Casual Leave',
-      startDate: '2024-12-05',
-      endDate: '2024-12-05',
-      days: 1,
-      reason: 'Personal work',
-      status: 'rejected',
-      submittedAt: '2024-12-04T09:15:00Z',
-      reviewedAt: '2024-12-04T11:45:00Z',
-      reviewedBy: 'Jane Manager',
-      priority: 'low',
-      emergencyContact: '+1-555-0123',
-    },
-    {
-      id: '4',
-      type: 'Annual Leave',
-      startDate: '2024-11-15',
-      endDate: '2024-11-20',
-      days: 5,
-      reason: 'Holiday trip',
-      status: 'approved',
-      submittedAt: '2024-11-10T08:30:00Z',
-      reviewedAt: '2024-11-10T10:15:00Z',
-      reviewedBy: 'Jane Manager',
-      priority: 'medium',
-      emergencyContact: '+1-555-0123',
-      workHandover: 'Projects handed over to team',
-    },
-    {
-      id: '5',
-      type: 'Sick Leave',
-      startDate: '2024-10-28',
-      endDate: '2024-10-29',
-      days: 2,
-      reason: 'Flu symptoms',
-      status: 'approved',
-      submittedAt: '2024-10-27T16:45:00Z',
-      reviewedAt: '2024-10-27T18:20:00Z',
-      reviewedBy: 'Jane Manager',
-      priority: 'high',
-      emergencyContact: '+1-555-0123',
-    },
-  ];
+  // Helper function to convert database leave type to display name
+  const getLeaveTypeDisplayName = (dbValue: string): string => {
+    const typeMap: { [key: string]: string } = {
+      'annual': 'Annual Leave',
+      'sick': 'Sick Leave',
+      'casual': 'Casual Leave',
+      'maternity': 'Maternity Leave',
+      'paternity': 'Paternity Leave',
+      'emergency': 'Emergency Leave'
+    };
+    return typeMap[dbValue] || dbValue;
+  };
 
-  useEffect(() => {
-    fetchLeaveRequests();
-  }, []);
-
-  const fetchLeaveRequests = async () => {
+  const fetchLeaveRequests = useCallback(async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setLeaveRequests(mockRequests);
+      
+      if (!user) {
+        console.warn('User not authenticated, skipping API calls');
+        setLeaveRequests([]);
+        return;
+      }
+
+      console.log('🔍 LeaveHistory: Fetching leave history with filters:', filters);
+      
+      // Add cache-busting timestamp
+      const timestamp = Date.now();
+      
+      const params: Record<string, unknown> = {
+        _t: timestamp,
+        page: pagination.page,
+        limit: pagination.limit,
+        sortBy: 'submittedAt',
+        sortOrder: 'desc'
+      };
+
+      // Add filters
+      if (filters.status !== 'all') {
+        params.status = filters.status;
+      }
+      if (filters.type !== 'all') {
+        params.leaveType = filters.type;
+      }
+      if (filters.year) {
+        params.year = parseInt(filters.year);
+      }
+
+      console.log('🔍 LeaveHistory: API params:', params);
+
+      const response = await employeeAPI.getLeaveHistory(params);
+      
+      console.log('🔍 LeaveHistory: API response:', response);
+
+      if (response.success && response.data) {
+        console.log('✅ LeaveHistory: Setting leave requests:', response.data);
+        
+        // Handle both array and paginated response
+        const requests = Array.isArray(response.data) ? response.data : response.data.data || [];
+        
+        // Debug: Log the leave types to see what we're working with
+        const leaveTypes = requests.map(req => req.leaveType);
+        console.log('🔍 LeaveHistory: Leave types in data:', leaveTypes);
+        
+        setLeaveRequests(requests as LeaveRequest[]);
+        
+        if (response.data && typeof response.data === 'object' && 'pagination' in response.data) {
+          const paginationData = (response.data as Record<string, unknown>).pagination as Record<string, unknown>;
+          setPagination(prev => ({
+            ...prev,
+            total: paginationData.total as number,
+            totalPages: paginationData.totalPages as number
+          }));
+        }
+      } else {
+        console.warn('❌ LeaveHistory: API failed or returned no data');
+        setLeaveRequests([]);
+      }
     } catch (error) {
+      console.error('Error fetching leave history:', error);
       toast({
         title: 'Error',
         description: 'Failed to fetch leave history',
         variant: 'destructive',
       });
+      setLeaveRequests([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, filters, pagination.page, pagination.limit]);
+
+  useEffect(() => {
+    if (user !== undefined) {
+      fetchLeaveRequests();
+    }
+  }, [filters, user, fetchLeaveRequests]);
 
   const filteredRequests = leaveRequests.filter(request => {
+    const displayName = getLeaveTypeDisplayName(request.leaveType);
     const matchesSearch = 
-      request.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      request.leaveType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       request.reason.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = filters.status === 'all' || request.status === filters.status;
-    const matchesType = filters.type === 'all' || request.type === filters.type;
+    const matchesType = filters.type === 'all' || request.leaveType === filters.type;
     
     return matchesSearch && matchesStatus && matchesType;
   });
@@ -227,7 +243,7 @@ const LeaveHistoryPage: React.FC = () => {
   };
 
   // Calculate statistics
-  const totalRequests = leaveRequests.length;
+  const totalRequests = pagination.total || leaveRequests.length;
   const approvedRequests = leaveRequests.filter(req => req.status === 'approved').length;
   const pendingRequests = leaveRequests.filter(req => req.status === 'pending').length;
   const rejectedRequests = leaveRequests.filter(req => req.status === 'rejected').length;
@@ -271,145 +287,155 @@ const LeaveHistoryPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-      {/* Header */}
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 to-pink-600/10 rounded-2xl blur-3xl"></div>
-        <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                Leave History
-              </h1>
-              <p className="text-muted-foreground mt-2 text-lg">
-                Track your leave requests and view your leave history.
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl blur-3xl"></div>
+            <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-6 border border-white/30 shadow-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl">
+                  <Clock className="h-6 w-6 text-white" />
+                </div>
+                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  Leave History
+                </h1>
+              </div>
+              <p className="text-slate-600 text-base lg:text-lg">
+                Track your leave requests and view your complete leave history
               </p>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Calendar className="h-4 w-4" />
+                  <span>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Clock className="h-4 w-4" />
+                  <span>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
             </div>
-            <div className="hidden md:flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-muted-foreground">Profile Active</span>
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-full border border-green-200">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-green-700 font-medium">Profile Active</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
         {stats.map((stat, index) => (
-          <div
-            key={index}
-            className="group relative overflow-hidden rounded-2xl bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-          >
-            <div className={`absolute inset-0 ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
-            <div className="relative p-6">
+          <div key={index} className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+            <div className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-4 lg:p-6 border border-white/30 shadow-lg group-hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{stat.description}</p>
+                <div className="space-y-1 lg:space-y-2">
+                  <p className="text-sm font-medium text-slate-600">{stat.title}</p>
+                  <p className="text-2xl lg:text-3xl font-bold text-slate-900">{stat.value}</p>
+                  <p className="text-xs text-slate-500">{stat.description}</p>
                 </div>
-                <div className={`p-3 rounded-xl ${stat.color} shadow-lg`}>
-                  <stat.icon className={`h-6 w-6 text-white`} />
+                <div className="p-2 lg:p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                  <stat.icon className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
                 </div>
               </div>
-              {stat.trend && (
-                <div className="flex items-center mt-4">
-                  {stat.trend.isPositive ? (
-                    <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
-                  ) : (
-                    <ArrowDownRight className="h-4 w-4 text-red-500 mr-1" />
-                  )}
-                  <span className={`text-sm font-medium ${stat.trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.trend.value}%
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         ))}
       </div>
 
       {/* Controls */}
-      <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex flex-col md:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search requests..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-white/50 border-slate-200/50 focus:border-purple-300 focus:ring-purple-200"
-                />
+      <div className="relative group">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+        <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+              <div className="flex flex-col md:flex-row gap-4 flex-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search requests..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 bg-white/50 border-slate-200/50 focus:border-blue-300 focus:ring-blue-200 rounded-xl"
+                  />
+                </div>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                    <SelectTrigger className="w-32 bg-white/50 border-slate-200/50 rounded-xl">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filters.type} onValueChange={(value) => setFilters(prev => ({ ...prev, type: value }))}>
+                    <SelectTrigger className="w-40 bg-white/50 border-slate-200/50 rounded-xl">
+                      <SelectValue placeholder="Leave Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="annual">Annual Leave</SelectItem>
+                      <SelectItem value="sick">Sick Leave</SelectItem>
+                      <SelectItem value="casual">Casual Leave</SelectItem>
+                      <SelectItem value="emergency">Emergency Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filters.year} onValueChange={(value) => setFilters(prev => ({ ...prev, year: value }))}>
+                    <SelectTrigger className="w-24 bg-white/50 border-slate-200/50 rounded-xl">
+                      <SelectValue placeholder="Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2024">2024</SelectItem>
+                      <SelectItem value="2023">2023</SelectItem>
+                      <SelectItem value="2022">2022</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex flex-col md:flex-row gap-2">
-                <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-                  <SelectTrigger className="w-32 bg-white/50 border-slate-200/50">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filters.type} onValueChange={(value) => setFilters(prev => ({ ...prev, type: value }))}>
-                  <SelectTrigger className="w-40 bg-white/50 border-slate-200/50">
-                    <SelectValue placeholder="Leave Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="Annual Leave">Annual Leave</SelectItem>
-                    <SelectItem value="Sick Leave">Sick Leave</SelectItem>
-                    <SelectItem value="Casual Leave">Casual Leave</SelectItem>
-                    <SelectItem value="Emergency Leave">Emergency Leave</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filters.year} onValueChange={(value) => setFilters(prev => ({ ...prev, year: value }))}>
-                  <SelectTrigger className="w-24 bg-white/50 border-slate-200/50">
-                    <SelectValue placeholder="Year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2024">2024</SelectItem>
-                    <SelectItem value="2023">2023</SelectItem>
-                    <SelectItem value="2022">2022</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={fetchLeaveRequests}
+                  className="hover:bg-blue-50 hover:text-blue-700 border-slate-200 rounded-xl"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh
+                </Button>
+                <Button
+                  variant="outline"
+                  className="hover:bg-green-50 hover:text-green-700 border-slate-200 rounded-xl"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                </Button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={fetchLeaveRequests}
-                className="hover:bg-purple-50 hover:text-purple-700"
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                className="hover:bg-green-50 hover:text-green-700"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Leave Requests Table */}
-      <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Clock className="h-5 w-5 text-purple-600" />
-            </div>
-            <span className="text-xl">Leave History ({filteredRequests.length})</span>
-          </CardTitle>
-        </CardHeader>
+      <div className="relative group">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+        <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3 text-xl">
+              <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                <Clock className="h-5 w-5 text-white" />
+              </div>
+              Leave History ({filteredRequests.length})
+            </CardTitle>
+            <p className="text-slate-600 text-sm mt-2">Complete history of your leave requests and their status</p>
+          </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -442,8 +468,8 @@ const LeaveHistoryPage: React.FC = () => {
                           <div className="p-2 bg-slate-100 rounded-lg">
                             <CalendarDays className="h-4 w-4 text-slate-600" />
                           </div>
-                          <Badge className={getTypeColor(request.type)}>
-                            {request.type}
+                          <Badge className={getTypeColor(request.leaveType)}>
+                            {getLeaveTypeDisplayName(request.leaveType)}
                           </Badge>
                         </div>
                       </TableCell>
@@ -522,32 +548,50 @@ const LeaveHistoryPage: React.FC = () => {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <TrendingUp className="h-5 w-5 text-green-600" />
-              </div>
-              Leave Usage by Type
-            </CardTitle>
-          </CardHeader>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+          <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-xl">
+                  <TrendingUp className="h-5 w-5 text-white" />
+                </div>
+                Leave Usage by Type
+              </CardTitle>
+              <p className="text-slate-600 text-sm mt-2">Track your leave usage across different categories</p>
+            </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {['Annual Leave', 'Sick Leave', 'Casual Leave'].map((type, index) => {
-                const typeRequests = leaveRequests.filter(req => req.type === type && req.status === 'approved');
+              {[
+                { displayName: 'Annual Leave', dbValue: 'annual', maxDays: 25 },
+                { displayName: 'Sick Leave', dbValue: 'sick', maxDays: 10 },
+                { displayName: 'Casual Leave', dbValue: 'casual', maxDays: 8 }
+              ].map((leaveType) => {
+                const typeRequests = leaveRequests.filter(req => 
+                  req.leaveType === leaveType.dbValue && req.status === 'approved'
+                );
                 const totalDays = typeRequests.reduce((sum, req) => sum + req.days, 0);
-                const maxDays = type === 'Annual Leave' ? 25 : type === 'Sick Leave' ? 10 : 8;
-                const percentage = (totalDays / maxDays) * 100;
+                const percentage = (totalDays / leaveType.maxDays) * 100;
+
+                // Debug logging
+                console.log(`🔍 Leave Usage - ${leaveType.displayName}:`, {
+                  dbValue: leaveType.dbValue,
+                  typeRequests: typeRequests.length,
+                  totalDays,
+                  maxDays: leaveType.maxDays,
+                  percentage
+                });
 
                 return (
-                  <div key={type} className="space-y-2">
+                  <div key={leaveType.displayName} className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="font-medium">{type}</span>
-                      <span className="text-slate-500">{totalDays}/{maxDays} days</span>
+                      <span className="font-medium">{leaveType.displayName}</span>
+                      <span className="text-slate-500">{totalDays}/{leaveType.maxDays} days</span>
                     </div>
                     <Progress 
                       value={percentage} 
@@ -562,44 +606,9 @@ const LeaveHistoryPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
-        <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Activity className="h-5 w-5 text-blue-600" />
-              </div>
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {leaveRequests.slice(0, 3).map((request, index) => (
-                <div
-                  key={request.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      request.status === 'approved' ? 'bg-green-500' :
-                      request.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{request.type}</p>
-                      <p className="text-xs text-slate-500">
-                        {new Date(request.submittedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge className={getStatusColor(request.status)}>
-                    {request.status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        </div>
+      </div>
+        </div>
       </div>
     </div>
   );

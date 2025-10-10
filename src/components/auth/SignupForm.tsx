@@ -41,6 +41,7 @@ import {
   Info,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { handleFormValidationErrors } from '@/lib/formUtils';
 
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -86,6 +87,7 @@ const SignupForm: React.FC = () => {
     }
   }, [watchedPassword]);
 
+
   const calculatePasswordStrength = (password: string) => {
     let strength = 0;
     if (password.length >= 6) strength += 20;
@@ -109,15 +111,27 @@ const SignupForm: React.FC = () => {
   };
 
   const onSubmit = async (data: SignupFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     try {
       setError('');
+      
+      // Show loading toast
+      toast({
+        title: 'Creating account...',
+        description: 'Please wait while we set up your account.',
+      });
+      
       const signupData = {
         name: data.name,
         email: data.email,
         password: data.password,
         department: data.department,
         role: 'employee' as const, // Default role for self-signup
-        manager_id: null, // No manager for self-signup
+        manager_id: null, // No manager assignment during signup
       };
       
       await signup(signupData);
@@ -129,7 +143,15 @@ const SignupForm: React.FC = () => {
 
       navigate('/employee/dashboard');
     } catch (err) {
-      setError('Failed to create account. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create account. Please try again.';
+      setError(errorMessage);
+      
+      // Show error toast
+      toast({
+        title: 'Signup failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -327,6 +349,7 @@ const SignupForm: React.FC = () => {
                     </p>
                   )}
                 </div>
+
 
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm font-medium text-slate-700">

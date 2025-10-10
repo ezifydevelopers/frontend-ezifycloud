@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
+import LeaveBalanceCard from '@/components/ui/LeaveBalanceCard';
 import { 
   Users, 
   Plus, 
@@ -52,10 +53,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { User } from '@/types/auth';
-import { userAPI } from '@/lib/api';
+import { adminAPI } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import EmployeeForm from './components/EmployeeForm';
 import EmployeeFilters from './components/EmployeeFilters';
+
+interface LeaveBalance {
+  annual: number;
+  sick: number;
+  casual: number;
+  emergency: number;
+}
 
 const EmployeesPage: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
@@ -68,6 +76,8 @@ const EmployeesPage: React.FC = () => {
     role: 'all',
     status: 'all',
   });
+  const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
+  const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchEmployees();
@@ -76,13 +86,30 @@ const EmployeesPage: React.FC = () => {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const response = await userAPI.getAllUsers();
+      console.log('🔍 EmployeesPage: Fetching employees...');
+      
+      // Build query parameters, filtering out undefined values
+      const queryParams: any = {};
+      if (searchTerm) queryParams.search = searchTerm;
+      if (filters.department !== 'all') queryParams.department = filters.department;
+      if (filters.role !== 'all') queryParams.role = filters.role;
+      if (filters.status !== 'all') queryParams.status = filters.status;
+      
+      console.log('🔍 EmployeesPage: Query params:', queryParams);
+      
+      const response = await adminAPI.getEmployees(queryParams);
+      
+      console.log('🔍 EmployeesPage: API response:', response);
+      
       if (response.success && response.data) {
-        setEmployees(response.data);
+        const employees = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setEmployees(employees);
+        console.log('✅ EmployeesPage: Loaded employees:', employees.length);
       } else {
         throw new Error(response.message || 'Failed to fetch employees');
       }
     } catch (error: any) {
+      console.error('❌ EmployeesPage: Error fetching employees:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to fetch employees',
@@ -93,15 +120,44 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
+  const fetchLeaveBalance = async (employeeId: string) => {
+    if (leaveBalances[employeeId] || loadingBalances[employeeId]) {
+      return; // Already loaded or loading
+    }
+
+    try {
+      setLoadingBalances(prev => ({ ...prev, [employeeId]: true }));
+      const response = await adminAPI.getEmployeeLeaveBalance(employeeId);
+      
+      if (response.success && response.data) {
+        setLeaveBalances(prev => ({ ...prev, [employeeId]: response.data as LeaveBalance }));
+      }
+    } catch (error) {
+      console.error('Error fetching leave balance for employee:', employeeId, error);
+    } finally {
+      setLoadingBalances(prev => ({ ...prev, [employeeId]: false }));
+    }
+  };
+
   const handleDeleteEmployee = async (employeeId: string) => {
     try {
-      await userAPI.deleteUser(employeeId);
-      toast({
-        title: 'Employee deleted',
-        description: 'Employee has been removed successfully',
-      });
-      fetchEmployees(); // Refresh the list
+      console.log('🔍 EmployeesPage: Deleting employee:', employeeId);
+      
+      const response = await adminAPI.deleteEmployee(employeeId);
+      
+      console.log('🔍 EmployeesPage: Delete response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Employee deleted',
+          description: 'Employee has been removed successfully',
+        });
+        fetchEmployees(); // Refresh the list
+      } else {
+        throw new Error(response.message || 'Failed to delete employee');
+      }
     } catch (error: any) {
+      console.error('❌ EmployeesPage: Error deleting employee:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to delete employee',
@@ -112,13 +168,23 @@ const EmployeesPage: React.FC = () => {
 
   const handleToggleStatus = async (employee: User) => {
     try {
-      await userAPI.toggleUserStatus(employee.id, !employee.isActive);
-      toast({
-        title: 'Status updated',
-        description: `Employee ${employee.isActive ? 'deactivated' : 'activated'}`,
-      });
-      fetchEmployees(); // Refresh the list
+      console.log('🔍 EmployeesPage: Toggling status for employee:', employee.id);
+      
+      const response = await adminAPI.toggleEmployeeStatus(employee.id, !employee.isActive);
+      
+      console.log('🔍 EmployeesPage: Toggle status response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Status updated',
+          description: `Employee ${employee.isActive ? 'deactivated' : 'activated'}`,
+        });
+        fetchEmployees(); // Refresh the list
+      } else {
+        throw new Error(response.message || 'Failed to update employee status');
+      }
     } catch (error: any) {
+      console.error('❌ EmployeesPage: Error toggling status:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to update employee status',
@@ -206,7 +272,9 @@ const EmployeesPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
       {/* Header */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl blur-3xl"></div>
@@ -264,35 +332,56 @@ const EmployeesPage: React.FC = () => {
         ))}
       </div>
 
-      {/* Controls */}
-      <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex flex-col md:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search employees..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-white/50 border-slate-200/50 focus:border-blue-300 focus:ring-blue-200"
-                />
+      {/* Enhanced Controls */}
+      <div className="relative group">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+        <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+          <CardContent className="p-6">
+            <div className="space-y-6">
+              {/* Search Bar */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                    <Search className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800">Employee Management</h3>
+                    <p className="text-sm text-slate-600">Search and filter your team members</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setShowForm(true)}
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Employee
+                </Button>
               </div>
-              <EmployeeFilters
-                filters={filters}
-                onFiltersChange={setFilters}
-              />
+
+              {/* Search and Filters */}
+              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
+                <div className="w-full lg:w-80">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search employees..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 h-11"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <EmployeeFilters
+                    filters={filters}
+                    onFiltersChange={setFilters}
+                  />
+                </div>
+              </div>
             </div>
-            <Button
-              onClick={() => setShowForm(true)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Employee
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Employees Table */}
       <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
@@ -318,6 +407,7 @@ const EmployeesPage: React.FC = () => {
                     <TableHead className="font-semibold">Department</TableHead>
                     <TableHead className="font-semibold">Role</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Leave Balance</TableHead>
                     <TableHead className="font-semibold">Contact</TableHead>
                     <TableHead className="font-semibold">Actions</TableHead>
                   </TableRow>
@@ -356,6 +446,30 @@ const EmployeesPage: React.FC = () => {
                         <Badge className={getStatusColor(employee.isActive)}>
                           {employee.isActive ? 'Active' : 'Inactive'}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="w-48">
+                          {loadingBalances[employee.id] ? (
+                            <div className="flex items-center justify-center py-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            </div>
+                          ) : leaveBalances[employee.id] ? (
+                            <LeaveBalanceCard 
+                              leaveBalance={leaveBalances[employee.id]} 
+                              showTitle={false} 
+                              compact={true}
+                            />
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fetchLeaveBalance(employee.id)}
+                              className="text-xs"
+                            >
+                              View Balance
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -455,6 +569,8 @@ const EmployeesPage: React.FC = () => {
           }}
         />
       )}
+        </div>
+      </div>
     </div>
   );
 };

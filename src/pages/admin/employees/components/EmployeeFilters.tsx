@@ -54,14 +54,17 @@ const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="space-y-2">
-        <Label htmlFor="department-filter">Department</Label>
+    <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex-1 min-w-0">
+        <Label htmlFor="department-filter" className="text-sm font-medium text-slate-700 block mb-2">Department</Label>
         <Select
           value={filters.department || 'all'}
           onValueChange={(value) => handleFilterChange('department', value)}
         >
-          <SelectTrigger id="department-filter">
+          <SelectTrigger 
+            id="department-filter" 
+            className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full"
+          >
             <SelectValue placeholder="All Departments" />
           </SelectTrigger>
           <SelectContent>
@@ -75,13 +78,16 @@ const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
         </Select>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="role-filter">Role</Label>
+      <div className="flex-1 min-w-0">
+        <Label htmlFor="role-filter" className="text-sm font-medium text-slate-700 block mb-2">Role</Label>
         <Select
           value={filters.role || 'all'}
           onValueChange={(value) => handleFilterChange('role', value)}
         >
-          <SelectTrigger id="role-filter">
+          <SelectTrigger 
+            id="role-filter" 
+            className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full"
+          >
             <SelectValue placeholder="All Roles" />
           </SelectTrigger>
           <SelectContent>
@@ -95,13 +101,16 @@ const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
         </Select>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="status-filter">Status</Label>
+      <div className="flex-1 min-w-0">
+        <Label htmlFor="status-filter" className="text-sm font-medium text-slate-700 block mb-2">Status</Label>
         <Select
           value={filters.status}
           onValueChange={(value) => handleFilterChange('status', value)}
         >
-          <SelectTrigger id="status-filter">
+          <SelectTrigger 
+            id="status-filter" 
+            className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full"
+          >
             <SelectValue placeholder="All Status" />
           </SelectTrigger>
           <SelectContent>

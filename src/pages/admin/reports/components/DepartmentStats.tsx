@@ -6,19 +6,12 @@ interface DepartmentStatsProps {
 }
 
 const DepartmentStats: React.FC<DepartmentStatsProps> = ({ department }) => {
-  // Mock data - replace with actual data
-  const mockData = [
-    { name: 'Engineering', total: 45, onLeave: 8, pending: 3, approved: 12 },
-    { name: 'Marketing', total: 23, onLeave: 3, pending: 1, approved: 5 },
-    { name: 'HR', total: 12, onLeave: 1, pending: 0, approved: 2 },
-    { name: 'Sales', total: 34, onLeave: 6, pending: 2, approved: 8 },
-    { name: 'Finance', total: 18, onLeave: 2, pending: 1, approved: 3 },
-    { name: 'Operations', total: 24, onLeave: 4, pending: 1, approved: 6 },
-  ];
+  // TODO: Replace with actual data from API
+  const data = [];
 
   const filteredData = department === 'all' 
-    ? mockData 
-    : mockData.filter(dept => dept.name.toLowerCase() === department);
+    ? data 
+    : data.filter(dept => dept.name.toLowerCase() === department);
 
   return (
     <div className="space-y-4">

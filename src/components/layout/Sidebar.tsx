@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { adminAPI, managerAPI } from '@/lib/api';
 import {
   Building2,
   LayoutDashboard,
   Users,
   FileText,
-  Calendar,
   Settings,
   BarChart3,
   Clock,
@@ -28,15 +28,12 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Plus,
   Search,
   Filter,
-  Download,
   RefreshCw,
   Eye,
   Edit,
   Trash2,
-  MoreHorizontal,
   Menu,
   X,
 } from 'lucide-react';
@@ -44,15 +41,8 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 
 interface SidebarProps {
   className?: string;
@@ -76,7 +66,64 @@ interface NavSection {
 const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
+  
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [sidebarStats, setSidebarStats] = useState({
+    totalEmployees: 0,
+    pendingRequests: 0,
+    auditLogs: 0,
+    teamMembers: 0
+  });
+
+  console.log('🔍 Sidebar: Current sidebarStats:', sidebarStats);
+
+  // Fetch sidebar stats for admin and manager users
+  useEffect(() => {
+    console.log('🔍 Sidebar: useEffect triggered, user role:', user?.role);
+    const fetchSidebarStats = async () => {
+      if (user?.role === 'admin') {
+        console.log('🔍 Sidebar: Fetching admin stats...');
+        try {
+          const quickStatsResponse = await adminAPI.getQuickStats();
+
+          if (quickStatsResponse.success) {
+            console.log('🔍 Sidebar: Quick stats response:', quickStatsResponse.data);
+            setSidebarStats({
+              totalEmployees: quickStatsResponse.data.totalEmployees || 0,
+              pendingRequests: quickStatsResponse.data.pendingRequests || 0,
+              auditLogs: 0, // Hidden functionality
+              teamMembers: 0
+            });
+            console.log('🔍 Sidebar: Updated stats:', {
+              totalEmployees: quickStatsResponse.data.totalEmployees || 0,
+              pendingRequests: quickStatsResponse.data.pendingRequests || 0
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching admin sidebar stats:', error);
+        }
+      } else if (user?.role === 'manager') {
+        try {
+          const dashboardStatsResponse = await managerAPI.getDashboardStats();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const teamStatsResponse = await managerAPI.getTeamStats();
+
+          if (dashboardStatsResponse.success) {
+            setSidebarStats({
+              totalEmployees: 0,
+              pendingRequests: dashboardStatsResponse.data.pendingApprovals || 0,
+              auditLogs: 0,
+              teamMembers: dashboardStatsResponse.data.teamSize || 0
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching manager sidebar stats:', error);
+        }
+      }
+    };
+
+    fetchSidebarStats();
+  }, [user?.role]);
 
   const adminNavSections: NavSection[] = [
     {
@@ -97,14 +144,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           icon: Users, 
           label: 'Employees', 
           href: '/admin/employees',
-          badge: 156,
+          badge: sidebarStats.totalEmployees,
           description: 'Manage team members'
         },
         { 
           icon: FileText, 
           label: 'Leave Requests', 
           href: '/admin/leave-requests',
-          badge: 12,
+          badge: sidebarStats.pendingRequests,
           description: 'Review and approve requests'
         },
         { 
@@ -112,24 +159,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           label: 'Leave Policies', 
           href: '/admin/policies',
           description: 'Configure leave rules'
-        },
-      ]
-    },
-    {
-      title: 'Analytics',
-      items: [
-        { 
-          icon: BarChart3, 
-          label: 'Reports', 
-          href: '/admin/reports',
-          description: 'Generate insights and reports'
-        },
-        { 
-          icon: Shield, 
-          label: 'Audit Logs', 
-          href: '/admin/audit-logs',
-          badge: 3,
-          description: 'Track system activities'
         },
       ]
     },
@@ -165,20 +194,15 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           icon: FileText, 
           label: 'Approvals', 
           href: '/manager/approvals',
-          badge: 8,
+          badge: sidebarStats.pendingRequests > 0 ? sidebarStats.pendingRequests : undefined,
           description: 'Review leave requests'
         },
         { 
           icon: Users, 
           label: 'Team Overview', 
           href: '/manager/team',
+          badge: sidebarStats.teamMembers > 0 ? sidebarStats.teamMembers : undefined,
           description: 'Manage team members'
-        },
-        { 
-          icon: Calendar, 
-          label: 'Team Calendar', 
-          href: '/manager/calendar',
-          description: 'View team schedule'
         },
       ]
     },
@@ -213,7 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         { 
           icon: FileText, 
           label: 'Request Leave', 
-          href: '/employee/request',
+          href: '/employee/request-leave',
           description: 'Submit new requests'
         },
         { 
@@ -221,12 +245,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           label: 'Leave History', 
           href: '/employee/history',
           description: 'View past requests'
-        },
-        { 
-          icon: Calendar, 
-          label: 'Calendar', 
-          href: '/employee/calendar',
-          description: 'Personal schedule'
         },
       ]
     },
@@ -426,32 +444,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           </nav>
         </ScrollArea>
 
-        {/* Quick Actions */}
-        {!isCollapsed && (
-          <div className="px-4 py-4 border-t border-white/20">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2">
-              Quick Actions
-            </h3>
-            <div className="space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start gap-2 text-slate-600 hover:bg-slate-100/50 hover:text-slate-900"
-              >
-                <Plus className="w-4 h-4" />
-                New Request
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-start gap-2 text-slate-600 hover:bg-slate-100/50 hover:text-slate-900"
-              >
-                <Download className="w-4 h-4" />
-                Export Data
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* User Info & Logout */}
         <div className="p-4 border-t border-white/20">
@@ -472,37 +464,18 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               </div>
             )}
             {!isCollapsed && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-white/95 backdrop-blur-sm border-white/20">
-                  <DropdownMenuItem className="hover:bg-slate-50">
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    View Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="hover:bg-slate-50">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="hover:bg-slate-50">
-                    <HelpCircle className="mr-2 h-4 w-4" />
-                    Help & Support
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={logout}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={logout}
+                className="text-red-600 hover:bg-red-50 hover:text-red-700 w-full justify-start"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </Button>
             )}
           </div>
+          
           {isCollapsed && (
             <Button
               variant="ghost"

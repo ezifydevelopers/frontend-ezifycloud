@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
+import PageHeader from '@/components/layout/PageHeader';
+import LeaveBalanceCard from '@/components/ui/LeaveBalanceCard';
 import { 
   Calendar, 
   Search, 
@@ -24,6 +26,7 @@ import {
   AlertCircle,
   User,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -46,7 +49,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { leaveAPI } from '@/lib/api';
+import { adminAPI } from '@/lib/api';
+import { triggerDashboardRefresh } from '@/contexts/DashboardContext';
 import { toast } from '@/hooks/use-toast';
 import LeaveRequestFilters from './components/LeaveRequestFilters';
 import LeaveRequestDetails from './components/LeaveRequestDetails';
@@ -82,148 +86,69 @@ const LeaveRequestsPage: React.FC = () => {
     department: 'all',
   });
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
+  const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
+  const scrollPositionRef = useRef<number>(0);
+  const [leaveBalances, setLeaveBalances] = useState<Record<string, any>>({});
+  const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchLeaveRequests();
   }, []);
 
-  const fetchLeaveRequests = async () => {
+  const fetchLeaveRequests = async (preserveScroll = false) => {
     try {
       setLoading(true);
-      const response = await leaveAPI.getLeaves();
+      
+      // Save current scroll position if preserving scroll
+      if (preserveScroll) {
+        scrollPositionRef.current = window.pageYOffset || document.documentElement.scrollTop;
+      }
+      
+      // Debug authentication
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      console.log('🔍 LeaveRequestsPage: Auth check:', {
+        hasToken: !!token,
+        tokenLength: token?.length,
+        hasUser: !!user,
+        userData: user ? JSON.parse(user) : null
+      });
+      
+      // Build query parameters, filtering out undefined values
+      const queryParams: any = {};
+      if (searchTerm) queryParams.search = searchTerm;
+      if (filters.status !== 'all') queryParams.status = filters.status;
+      if (filters.department !== 'all') queryParams.department = filters.department;
+      if (filters.dateFrom) queryParams.dateFrom = filters.dateFrom;
+      if (filters.dateTo) queryParams.dateTo = filters.dateTo;
+      
+      console.log('🔍 LeaveRequestsPage: Query params:', queryParams);
+      
+      const response = await adminAPI.getLeaveRequests(queryParams);
+      console.log('🔍 LeaveRequestsPage: API response:', response);
+      
       if (response.success && response.data) {
-        setLeaveRequests(response.data);
+        const requests = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setLeaveRequests(requests);
+        console.log('✅ LeaveRequestsPage: Loaded leave requests:', requests.length);
+        
+        // Restore scroll position if preserving scroll
+        if (preserveScroll) {
+          requestAnimationFrame(() => {
+            window.scrollTo(0, scrollPositionRef.current);
+          });
+        }
       } else {
-        // If API doesn't return expected format, use mock data
-        const mockData: LeaveRequest[] = [
-          {
-            id: '1',
-            employee: {
-              id: 'emp1',
-              name: 'Sarah Johnson',
-              email: 'sarah.johnson@company.com',
-              department: 'Engineering',
-              avatar: 'SJ',
-            },
-            leaveType: 'Annual Leave',
-            startDate: '2024-12-20',
-            endDate: '2024-12-27',
-            days: 7,
-            reason: 'Christmas vacation with family',
-            status: 'pending',
-            submittedAt: '2024-12-15T10:30:00Z',
-            priority: 'high',
-          },
-          {
-            id: '2',
-            employee: {
-              id: 'emp2',
-              name: 'Mike Chen',
-              email: 'mike.chen@company.com',
-              department: 'Marketing',
-              avatar: 'MC',
-            },
-            leaveType: 'Sick Leave',
-            startDate: '2024-12-16',
-            endDate: '2024-12-16',
-            days: 1,
-            reason: 'Doctor appointment',
-            status: 'approved',
-            submittedAt: '2024-12-15T14:20:00Z',
-            reviewedAt: '2024-12-15T16:45:00Z',
-            reviewedBy: 'John Manager',
-            priority: 'medium',
-          },
-          {
-            id: '3',
-            employee: {
-              id: 'emp3',
-              name: 'Emma Wilson',
-              email: 'emma.wilson@company.com',
-              department: 'HR',
-              avatar: 'EW',
-            },
-            leaveType: 'Casual Leave',
-            startDate: '2024-12-18',
-            endDate: '2024-12-19',
-            days: 2,
-            reason: 'Personal work',
-            status: 'rejected',
-            submittedAt: '2024-12-14T09:15:00Z',
-            reviewedAt: '2024-12-14T11:30:00Z',
-            reviewedBy: 'Jane Admin',
-            priority: 'low',
-          },
-        ];
-        setLeaveRequests(mockData);
+        console.warn('❌ LeaveRequestsPage: No data received');
+        setLeaveRequests([]);
       }
     } catch (error) {
       console.error('Error fetching leave requests:', error);
-      // Use mock data as fallback
-      const mockData: LeaveRequest[] = [
-        {
-          id: '1',
-          employee: {
-            id: 'emp1',
-            name: 'Sarah Johnson',
-            email: 'sarah.johnson@company.com',
-            department: 'Engineering',
-            avatar: 'SJ',
-          },
-          leaveType: 'Annual Leave',
-          startDate: '2024-12-20',
-          endDate: '2024-12-27',
-          days: 7,
-          reason: 'Christmas vacation with family',
-          status: 'pending',
-          submittedAt: '2024-12-15T10:30:00Z',
-          priority: 'high',
-        },
-        {
-          id: '2',
-          employee: {
-            id: 'emp2',
-            name: 'Mike Chen',
-            email: 'mike.chen@company.com',
-            department: 'Marketing',
-            avatar: 'MC',
-          },
-          leaveType: 'Sick Leave',
-          startDate: '2024-12-16',
-          endDate: '2024-12-16',
-          days: 1,
-          reason: 'Doctor appointment',
-          status: 'approved',
-          submittedAt: '2024-12-15T14:20:00Z',
-          reviewedAt: '2024-12-15T16:45:00Z',
-          reviewedBy: 'John Manager',
-          priority: 'medium',
-        },
-        {
-          id: '3',
-          employee: {
-            id: 'emp3',
-            name: 'Emma Wilson',
-            email: 'emma.wilson@company.com',
-            department: 'HR',
-            avatar: 'EW',
-          },
-          leaveType: 'Casual Leave',
-          startDate: '2024-12-18',
-          endDate: '2024-12-19',
-          days: 2,
-          reason: 'Personal work',
-          status: 'rejected',
-          submittedAt: '2024-12-14T09:15:00Z',
-          reviewedAt: '2024-12-14T11:30:00Z',
-          reviewedBy: 'Jane Admin',
-          priority: 'low',
-        },
-      ];
-      setLeaveRequests(mockData);
+      // Show empty state on error
+      setLeaveRequests([]);
       toast({
-        title: 'Warning',
-        description: 'Using demo data - API not available',
+        title: 'Error',
+        description: 'Failed to fetch leave requests',
         variant: 'destructive',
       });
     } finally {
@@ -231,37 +156,110 @@ const LeaveRequestsPage: React.FC = () => {
     }
   };
 
-  const handleApprove = async (requestId: string) => {
+  const fetchLeaveBalance = async (employeeId: string) => {
+    if (leaveBalances[employeeId] || loadingBalances[employeeId]) {
+      return; // Already loaded or loading
+    }
+
     try {
-      // API call would go here
-      toast({
-        title: 'Request approved',
-        description: 'Leave request has been approved successfully',
-      });
-      fetchLeaveRequests();
+      setLoadingBalances(prev => ({ ...prev, [employeeId]: true }));
+      const response = await adminAPI.getEmployeeLeaveBalance(employeeId);
+      
+      if (response.success && response.data) {
+        setLeaveBalances(prev => ({ ...prev, [employeeId]: response.data }));
+      }
+    } catch (error) {
+      console.error('Error fetching leave balance for employee:', employeeId, error);
+    } finally {
+      setLoadingBalances(prev => ({ ...prev, [employeeId]: false }));
+    }
+  };
+
+  const handleApprove = async (requestId: string, event?: React.MouseEvent) => {
+    // Prevent default behavior and page scrolling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    try {
+      setProcessingRequests(prev => new Set(prev).add(requestId));
+      console.log('🔍 Admin: Approving leave request:', requestId);
+      console.log('🔍 Admin: Request ID type:', typeof requestId);
+      console.log('🔍 Admin: Request ID length:', requestId.length);
+      console.log('🔍 Admin: Request ID value:', JSON.stringify(requestId));
+      
+      const response = await adminAPI.updateLeaveRequestStatus(requestId, 'approved', 'Approved by admin');
+      
+      console.log('🔍 Admin: Approval response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Request approved',
+          description: 'Leave request has been approved successfully',
+        });
+        // Refresh the data to show updated status while preserving scroll position
+        await fetchLeaveRequests(true);
+        // Trigger dashboard refresh to update stats
+        triggerDashboardRefresh();
+      } else {
+        throw new Error(response.message || 'Failed to approve request');
+      }
     } catch (error: any) {
+      console.error('🔍 Admin: Error approving request:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to approve request',
         variant: 'destructive',
       });
+    } finally {
+      setProcessingRequests(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(requestId);
+        return newSet;
+      });
     }
   };
 
-  const handleReject = async (requestId: string) => {
+  const handleReject = async (requestId: string, event?: React.MouseEvent) => {
+    // Prevent default behavior and page scrolling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     try {
-      // API call would go here
-      toast({
-        title: 'Request rejected',
-        description: 'Leave request has been rejected',
-        variant: 'destructive',
-      });
-      fetchLeaveRequests();
+      setProcessingRequests(prev => new Set(prev).add(requestId));
+      console.log('🔍 Admin: Rejecting leave request:', requestId);
+      
+      const response = await adminAPI.updateLeaveRequestStatus(requestId, 'rejected', 'Rejected by admin');
+      
+      console.log('🔍 Admin: Rejection response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Request rejected',
+          description: 'Leave request has been rejected',
+        });
+        // Refresh the data to show updated status while preserving scroll position
+        await fetchLeaveRequests(true);
+        // Trigger dashboard refresh to update stats
+        triggerDashboardRefresh();
+      } else {
+        throw new Error(response.message || 'Failed to reject request');
+      }
     } catch (error: any) {
+      console.error('🔍 Admin: Error rejecting request:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to reject request',
         variant: 'destructive',
+      });
+    } finally {
+      setProcessingRequests(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(requestId);
+        return newSet;
       });
     }
   };
@@ -356,27 +354,16 @@ const LeaveRequestsPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
       {/* Header */}
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl blur-3xl"></div>
-        <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Leave Requests
-              </h1>
-              <p className="text-muted-foreground mt-2 text-lg">
-                Review and manage employee leave requests across your organization.
-              </p>
-            </div>
-            <div className="hidden md:flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-muted-foreground">System Online</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Leave Requests"
+        subtitle="Review and manage employee leave requests across your organization."
+        icon={Calendar}
+        iconColor="from-blue-600 to-purple-600"
+      />
 
       {/* Stats Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -461,6 +448,7 @@ const LeaveRequestsPage: React.FC = () => {
                     <TableHead className="font-semibold">Leave Type</TableHead>
                     <TableHead className="font-semibold">Dates</TableHead>
                     <TableHead className="font-semibold">Days</TableHead>
+                    <TableHead className="font-semibold">Leave Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Priority</TableHead>
                     <TableHead className="font-semibold">Actions</TableHead>
@@ -508,6 +496,30 @@ const LeaveRequestsPage: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="w-32">
+                          {loadingBalances[request.employee.id] ? (
+                            <div className="flex items-center justify-center py-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            </div>
+                          ) : leaveBalances[request.employee.id] ? (
+                            <div className="text-xs text-slate-600">
+                              <div>A: {leaveBalances[request.employee.id].annual}</div>
+                              <div>S: {leaveBalances[request.employee.id].sick}</div>
+                              <div>C: {leaveBalances[request.employee.id].casual}</div>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fetchLeaveBalance(request.employee.id)}
+                              className="text-xs h-6 px-2"
+                            >
+                              View
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <Badge className={getStatusColor(request.status)}>
                           {request.status}
                         </Badge>
@@ -523,20 +535,22 @@ const LeaveRequestsPage: React.FC = () => {
                             <>
                               <Button
                                 size="sm"
-                                onClick={() => handleApprove(request.id)}
-                                className="bg-green-600 hover:bg-green-700 text-white h-8 px-3"
+                                onClick={(e) => handleApprove(request.id, e)}
+                                disabled={processingRequests.has(request.id)}
+                                className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <CheckCircle className="h-3 w-3 mr-1" />
-                                Approve
+                                {processingRequests.has(request.id) ? 'Approving...' : 'Approve'}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleReject(request.id)}
-                                className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-3"
+                                onClick={(e) => handleReject(request.id, e)}
+                                disabled={processingRequests.has(request.id)}
+                                className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <XCircle className="h-3 w-3 mr-1" />
-                                Reject
+                                {processingRequests.has(request.id) ? 'Rejecting...' : 'Reject'}
                               </Button>
                             </>
                           )}
@@ -575,6 +589,8 @@ const LeaveRequestsPage: React.FC = () => {
           }}
         />
       )}
+        </div>
+      </div>
     </div>
   );
 };

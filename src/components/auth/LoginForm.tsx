@@ -41,6 +41,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { handleFormValidationErrors } from '@/lib/formUtils';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -64,8 +65,20 @@ const LoginForm: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    // Check for validation errors first
+    if (handleFormValidationErrors(errors)) {
+      return;
+    }
+    
     try {
       setError('');
+      
+      // Show loading toast
+      toast({
+        title: 'Signing in...',
+        description: 'Please wait while we authenticate your credentials.',
+      });
+      
       await login(data.email, data.password);
       
       toast({
@@ -80,6 +93,13 @@ const LoginForm: React.FC = () => {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
       setError(errorMessage);
+      
+      // Show error toast
+      toast({
+        title: 'Login failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     }
   };
 

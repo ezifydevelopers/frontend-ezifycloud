@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { adminAPI } from '@/lib/api';
 import { 
   BookOpen, 
   Plus, 
@@ -49,14 +50,22 @@ import { toast } from '@/hooks/use-toast';
 interface LeavePolicy {
   id: string;
   name: string;
-  type: 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Emergency';
-  daysPerYear: number;
-  carryForward: boolean;
-  maxCarryForward: number;
-  requiresApproval: boolean;
-  advanceNotice: number;
   description: string;
+  leaveType: string;
+  type?: string; // For backward compatibility
+  maxDaysPerYear: number;
+  daysPerYear?: number; // For backward compatibility
+  maxDaysPerRequest: number;
+  carryForwardDays: number;
+  carryForward?: boolean; // For backward compatibility
+  maxCarryForward?: number; // For backward compatibility
+  carryForwardExpiry: number;
+  requiresApproval: boolean;
+  requiresDocumentation: boolean;
+  advanceNotice?: number; // For backward compatibility
   isActive: boolean;
+  applicableRoles: string[];
+  applicableDepartments: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -67,79 +76,44 @@ const LeavePoliciesPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<LeavePolicy | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
 
-  // Mock data
-  const mockPolicies: LeavePolicy[] = [
-    {
-      id: '1',
-      name: 'Annual Leave Policy',
-      type: 'Annual',
-      daysPerYear: 25,
-      carryForward: true,
-      maxCarryForward: 5,
-      requiresApproval: true,
-      advanceNotice: 7,
-      description: 'Standard annual leave policy for all employees',
-      isActive: true,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    },
-    {
-      id: '2',
-      name: 'Sick Leave Policy',
-      type: 'Sick',
-      daysPerYear: 10,
-      carryForward: false,
-      maxCarryForward: 0,
-      requiresApproval: false,
-      advanceNotice: 0,
-      description: 'Sick leave policy for health-related absences',
-      isActive: true,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    },
-    {
-      id: '3',
-      name: 'Casual Leave Policy',
-      type: 'Casual',
-      daysPerYear: 8,
-      carryForward: false,
-      maxCarryForward: 0,
-      requiresApproval: true,
-      advanceNotice: 2,
-      description: 'Casual leave for personal matters',
-      isActive: true,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    },
-    {
-      id: '4',
-      name: 'Maternity Leave Policy',
-      type: 'Maternity',
-      daysPerYear: 90,
-      carryForward: false,
-      maxCarryForward: 0,
-      requiresApproval: true,
-      advanceNotice: 30,
-      description: 'Maternity leave policy for new mothers',
-      isActive: true,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    },
-  ];
 
-  useEffect(() => {
-    fetchPolicies();
-  }, []);
-
-  const fetchPolicies = async () => {
+  const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setPolicies(mockPolicies);
+      console.log('🔍 LeavePoliciesPage: Fetching policies...');
+      
+      // Build query parameters, filtering out undefined values
+      const queryParams: Record<string, string> = {};
+      if (searchTerm) queryParams.search = searchTerm;
+      
+      console.log('🔍 LeavePoliciesPage: Query params:', queryParams);
+      
+      const response = await adminAPI.getLeavePolicies(queryParams);
+      
+      console.log('🔍 LeavePoliciesPage: API response:', response);
+      
+      if (response.success && response.data) {
+        // Handle both direct array and paginated response formats
+        let policies: LeavePolicy[] = [];
+        if (Array.isArray(response.data)) {
+          policies = response.data;
+        } else if ('policies' in response.data) {
+          policies = (response.data as { policies: LeavePolicy[] }).policies;
+        } else if ('data' in response.data) {
+          policies = (response.data as { data: unknown[] }).data as LeavePolicy[];
+        }
+        
+        setPolicies(policies);
+        console.log('✅ LeavePoliciesPage: Loaded policies:', policies.length);
+        console.log('🔍 LeavePoliciesPage: Policies data:', policies);
+      } else {
+        console.warn('❌ LeavePoliciesPage: No data received');
+        setPolicies([]);
+      }
     } catch (error) {
+      console.error('❌ LeavePoliciesPage: Error fetching leave policies:', error);
+      setPolicies([]);
       toast({
         title: 'Error',
         description: 'Failed to fetch leave policies',
@@ -148,102 +122,207 @@ const LeavePoliciesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    fetchPolicies();
+  }, [fetchPolicies]);
 
   const handleSavePolicy = async (policyData: Partial<LeavePolicy>) => {
     try {
+      setLoading(true);
+      console.log('🔍 LeavePoliciesPage: Saving policy:', policyData);
+      
+      // Map frontend field names to backend field names
+      const mappedData = {
+        name: policyData.name,
+        description: policyData.description,
+        leaveType: policyData.type?.toLowerCase() || 'annual', // Map 'type' to 'leaveType' and ensure lowercase
+        maxDaysPerYear: policyData.daysPerYear || 0,
+        maxDaysPerRequest: policyData.maxDaysPerRequest || policyData.daysPerYear || 0,
+        carryForwardDays: policyData.carryForward ? (policyData.maxCarryForward || 0) : 0,
+        carryForwardExpiry: policyData.carryForwardExpiry || 12,
+        requiresApproval: policyData.requiresApproval,
+        requiresDocumentation: policyData.requiresDocumentation || false,
+        isActive: policyData.isActive,
+        applicableRoles: ['employee', 'manager'],
+        applicableDepartments: ['Engineering', 'HR', 'Marketing'],
+      };
+      
+      console.log('🔍 LeavePoliciesPage: Mapped data:', mappedData);
+      
+      let response;
       if (editingPolicy) {
         // Update existing policy
-        setPolicies(prev => prev.map(p => 
-          p.id === editingPolicy.id 
-            ? { ...p, ...policyData, updatedAt: new Date().toISOString() }
-            : p
-        ));
-        toast({
-          title: 'Policy updated',
-          description: 'Leave policy has been updated successfully',
-        });
+        console.log('🔍 LeavePoliciesPage: Updating policy:', editingPolicy.id);
+        response = await adminAPI.updateLeavePolicy(editingPolicy.id, mappedData);
+        console.log('🔍 LeavePoliciesPage: Update response:', response);
       } else {
         // Create new policy
-        const newPolicy: LeavePolicy = {
-          id: Date.now().toString(),
-          ...policyData as LeavePolicy,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setPolicies(prev => [...prev, newPolicy]);
-        toast({
-          title: 'Policy created',
-          description: 'New leave policy has been created successfully',
-        });
+        console.log('🔍 LeavePoliciesPage: Creating new policy');
+        response = await adminAPI.createLeavePolicy(mappedData);
+        console.log('🔍 LeavePoliciesPage: Create response:', response);
       }
-      setShowForm(false);
-      setEditingPolicy(null);
+      
+      if (response.success) {
+        toast({
+          title: editingPolicy ? 'Policy updated' : 'Policy created',
+          description: `Leave policy has been ${editingPolicy ? 'updated' : 'created'} successfully`,
+        });
+        setShowForm(false);
+        setEditingPolicy(null);
+        // Refresh the policies list
+        fetchPolicies();
+      } else {
+        throw new Error(response.message || 'Failed to save policy');
+      }
     } catch (error) {
+      console.error('❌ LeavePoliciesPage: Error saving policy:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save leave policy',
+        description: `Failed to save leave policy: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeactivatePolicy = async (policyId: string) => {
+    // Add confirmation dialog
+    if (!confirm('Are you sure you want to deactivate this leave policy? You can reactivate it later if needed.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('🔍 LeavePoliciesPage: Deactivating policy:', policyId);
+      
+      // Find the current policy to get its current status
+      const currentPolicy = policies.find(p => p.id === policyId);
+      if (!currentPolicy) {
+        throw new Error('Policy not found');
+      }
+      
+      // Instead of deleting, deactivate the policy using the dedicated toggle endpoint
+      const response = await adminAPI.toggleLeavePolicyStatus(policyId, false);
+      console.log('🔍 LeavePoliciesPage: Deactivate response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Policy deactivated',
+          description: 'Leave policy has been deactivated successfully. You can reactivate it later if needed.',
+        });
+        // Refresh the policies list
+        fetchPolicies();
+      } else {
+        throw new Error(response.message || 'Failed to deactivate policy');
+      }
+    } catch (error) {
+      console.error('❌ LeavePoliciesPage: Error deactivating policy:', error);
+      toast({ 
+        title: 'Error', 
+        description: `Failed to deactivate leave policy: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        variant: 'destructive' 
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDeletePolicy = async (policyId: string) => {
+    // Add confirmation dialog for permanent deletion
+    if (!confirm('Are you sure you want to permanently delete this leave policy? This action cannot be undone.')) {
+      return;
+    }
+
     try {
-      setPolicies(prev => prev.filter(p => p.id !== policyId));
-      toast({
-        title: 'Policy deleted',
-        description: 'Leave policy has been deleted successfully',
-      });
+      setLoading(true);
+      console.log('🔍 LeavePoliciesPage: Deleting policy:', policyId);
+      
+      const response = await adminAPI.deleteLeavePolicy(policyId);
+      console.log('🔍 LeavePoliciesPage: Delete response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Policy deleted',
+          description: 'Leave policy has been permanently deleted successfully.',
+        });
+        // Refresh the policies list
+        fetchPolicies();
+      } else {
+        throw new Error(response.message || 'Failed to delete policy');
+      }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete leave policy',
-        variant: 'destructive',
+      console.error('❌ LeavePoliciesPage: Error deleting policy:', error);
+      toast({ 
+        title: 'Error', 
+        description: `Failed to delete leave policy: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        variant: 'destructive' 
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleToggleStatus = async (policyId: string) => {
     try {
-      setPolicies(prev => prev.map(p => 
-        p.id === policyId 
-          ? { ...p, isActive: !p.isActive, updatedAt: new Date().toISOString() }
-          : p
-      ));
-      toast({
-        title: 'Status updated',
-        description: 'Policy status has been updated successfully',
-      });
+      setLoading(true);
+      console.log('🔍 LeavePoliciesPage: Toggling status for policy:', policyId);
+      
+      // Find the current policy to get its current status
+      const currentPolicy = policies.find(p => p.id === policyId);
+      if (!currentPolicy) {
+        throw new Error('Policy not found');
+      }
+      
+      // Use the dedicated toggle endpoint
+      const response = await adminAPI.toggleLeavePolicyStatus(policyId, !currentPolicy.isActive);
+      console.log('🔍 LeavePoliciesPage: Toggle status response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Status updated',
+          description: 'Policy status has been updated successfully',
+        });
+        // Refresh the policies list
+        fetchPolicies();
+      } else {
+        throw new Error(response.message || 'Failed to update policy status');
+      }
     } catch (error) {
+      console.error('❌ LeavePoliciesPage: Error toggling status:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update policy status',
+        description: `Failed to update policy status: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   const filteredPolicies = policies.filter(policy => {
+    const policyType = policy.leaveType || policy.type || 'Unknown';
     const matchesSearch = policy.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         policy.type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'all' || policy.type === filterType;
-    return matchesSearch && matchesType;
+                         policyType.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
   });
 
   const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'Annual':
+    const normalizedType = type?.toLowerCase();
+    switch (normalizedType) {
+      case 'annual':
         return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Sick':
+      case 'sick':
         return 'bg-red-100 text-red-800 border-red-200';
-      case 'Casual':
+      case 'casual':
         return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'Maternity':
+      case 'maternity':
         return 'bg-pink-100 text-pink-800 border-pink-200';
-      case 'Paternity':
+      case 'paternity':
         return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-      case 'Emergency':
+      case 'emergency':
         return 'bg-orange-100 text-orange-800 border-orange-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -289,45 +368,61 @@ const LeavePoliciesPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
       {/* Header */}
       <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl blur-3xl"></div>
-        <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Leave Policies
-              </h1>
-              <p className="text-muted-foreground mt-2 text-lg">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl blur-3xl"></div>
+        <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-6 border border-white/30 shadow-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl">
+                  <BookOpen className="h-6 w-6 text-white" />
+                </div>
+                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  Leave Policies
+                </h1>
+              </div>
+              <p className="text-slate-600 text-base lg:text-lg">
                 Configure and manage leave policies for your organization.
               </p>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Calendar className="h-4 w-4" />
+                  <span>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Clock className="h-4 w-4" />
+                  <span>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
             </div>
-            <div className="hidden md:flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-muted-foreground">System Online</span>
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-full border border-green-200">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-green-700 font-medium">System Online</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      {/* Stats Overview Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
         {stats.map((stat, index) => (
-          <div
-            key={index}
-            className="group relative overflow-hidden rounded-2xl bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-          >
-            <div className={`absolute inset-0 ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
-            <div className="relative p-6">
+          <div key={index} className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+            <div className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-4 lg:p-6 border border-white/30 shadow-lg group-hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{stat.description}</p>
+                <div className="space-y-1 lg:space-y-2">
+                  <p className="text-sm font-medium text-slate-600">{stat.title}</p>
+                  <p className="text-2xl lg:text-3xl font-bold text-slate-900">{stat.value}</p>
+                  <p className="text-xs text-slate-500">{stat.description}</p>
                 </div>
-                <div className={`p-3 rounded-xl ${stat.color} shadow-lg`}>
-                  <stat.icon className={`h-6 w-6 text-white`} />
+                <div className="p-2 lg:p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                  <stat.icon className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
                 </div>
               </div>
             </div>
@@ -349,19 +444,6 @@ const LeavePoliciesPage: React.FC = () => {
                   className="pl-10 bg-white/50 border-slate-200/50 focus:border-blue-300 focus:ring-blue-200"
                 />
               </div>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-3 py-2 border border-slate-200/50 rounded-md bg-white/50 focus:border-blue-300 focus:ring-blue-200"
-              >
-                <option value="all">All Types</option>
-                <option value="Annual">Annual</option>
-                <option value="Sick">Sick</option>
-                <option value="Casual">Casual</option>
-                <option value="Maternity">Maternity</option>
-                <option value="Paternity">Paternity</option>
-                <option value="Emergency">Emergency</option>
-              </select>
             </div>
             <Button
               onClick={() => setShowForm(true)}
@@ -417,23 +499,23 @@ const LeavePoliciesPage: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getTypeColor(policy.type)}>
-                          {policy.type}
+                        <Badge className={getTypeColor(policy.leaveType || policy.type)}>
+                          {policy.leaveType || policy.type}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Calendar className="h-4 w-4 text-slate-400" />
-                          <span className="font-medium">{policy.daysPerYear}</span>
+                          <span className="font-medium">{policy.maxDaysPerYear || policy.daysPerYear}</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          {policy.carryForward ? (
+                          {(policy.carryForwardDays > 0) ? (
                             <>
                               <CheckCircle className="h-4 w-4 text-green-500" />
                               <span className="text-sm text-slate-600">
-                                {policy.maxCarryForward} days max
+                                {policy.carryForwardDays} days max
                               </span>
                             </>
                           ) : (
@@ -450,7 +532,7 @@ const LeavePoliciesPage: React.FC = () => {
                             <>
                               <AlertCircle className="h-4 w-4 text-amber-500" />
                               <span className="text-sm text-slate-600">
-                                {policy.advanceNotice} days notice
+                                Manual approval
                               </span>
                             </>
                           ) : (
@@ -488,8 +570,18 @@ const LeavePoliciesPage: React.FC = () => {
                           <Button
                             size="sm"
                             variant="ghost"
+                            onClick={() => handleDeactivatePolicy(policy.id)}
+                            className="hover:bg-orange-50 hover:text-orange-700"
+                            title={policy.isActive ? "Deactivate Policy" : "Policy is already inactive"}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             onClick={() => handleDeletePolicy(policy.id)}
                             className="hover:bg-red-50 hover:text-red-700"
+                            title="Permanently Delete Policy"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -525,9 +617,24 @@ const LeavePoliciesPage: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+        </div>
+      </div>
     </div>
   );
 };
+
+// Form data interface
+interface PolicyFormData {
+  name: string;
+  type: string;
+  daysPerYear: number;
+  carryForward: boolean;
+  maxCarryForward: number;
+  requiresApproval: boolean;
+  advanceNotice: number;
+  description: string;
+  isActive: boolean;
+}
 
 // Policy Form Component
 const PolicyForm: React.FC<{
@@ -535,12 +642,12 @@ const PolicyForm: React.FC<{
   onSave: (data: Partial<LeavePolicy>) => void;
   onCancel: () => void;
 }> = ({ policy, onSave, onCancel }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PolicyFormData>({
     name: policy?.name || '',
-    type: policy?.type || 'Annual',
-    daysPerYear: policy?.daysPerYear || 0,
-    carryForward: policy?.carryForward || false,
-    maxCarryForward: policy?.maxCarryForward || 0,
+    type: policy?.leaveType || policy?.type || 'annual',
+    daysPerYear: policy?.maxDaysPerYear || policy?.daysPerYear || 0,
+    carryForward: (policy?.carryForwardDays || 0) > 0,
+    maxCarryForward: policy?.carryForwardDays || 0,
     requiresApproval: policy?.requiresApproval || true,
     advanceNotice: policy?.advanceNotice || 0,
     description: policy?.description || '',
@@ -570,7 +677,7 @@ const PolicyForm: React.FC<{
           <select
             id="type"
             value={formData.type}
-            onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as any }))}
+            onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
             className="w-full px-3 py-2 border border-slate-200 rounded-md focus:border-blue-300 focus:ring-blue-200"
             required
           >

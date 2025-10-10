@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { DashboardProvider } from "@/contexts/DashboardContext";
 
 // Auth Components
 import LoginForm from "@/components/auth/LoginForm";
@@ -23,20 +24,19 @@ import EmployeeDashboard from "@/pages/employee/EmployeeDashboard";
 import EmployeesPage from "@/pages/admin/employees/EmployeesPage";
 import LeaveRequestsPage from "@/pages/admin/leave-requests/LeaveRequestsPage";
 import LeavePoliciesPage from "@/pages/admin/policies/LeavePoliciesPage";
-import ReportsPage from "@/pages/admin/reports/ReportsPage";
-import AuditLogsPage from "@/pages/admin/audit-logs/AuditLogsPage";
+// import ReportsPage from "@/pages/admin/reports/ReportsPage";
+// import AuditLogsPage from "@/pages/admin/audit-logs/AuditLogsPage";
 import SettingsPage from "@/pages/admin/settings/SettingsPage";
 
 // Manager Pages
 import ApprovalsPage from "@/pages/manager/approvals/ApprovalsPage";
 import TeamOverviewPage from "@/pages/manager/team/TeamOverviewPage";
-import TeamCalendarPage from "@/pages/manager/calendar/TeamCalendarPage";
+import TeamMemberDetailPage from "@/pages/manager/team/TeamMemberDetailPage";
 import ManagerSettingsPage from "@/pages/manager/settings/ManagerSettingsPage";
 
 // Employee Pages
 import RequestLeave from "@/pages/employee/RequestLeave";
 import LeaveHistoryPage from "@/pages/employee/history/LeaveHistoryPage";
-import EmployeeCalendarPage from "@/pages/employee/calendar/EmployeeCalendarPage";
 import EmployeeProfilePage from "@/pages/employee/profile/EmployeeProfilePage";
 import EmployeeSettingsPage from "@/pages/employee/settings/EmployeeSettingsPage";
 
@@ -83,10 +83,11 @@ const RoleBasedRedirect: React.FC = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
+      <DashboardProvider>
+        <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<LoginForm />} />
@@ -126,7 +127,8 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/admin/reports" element={
+            {/* Reports and Audit Logs routes hidden */}
+            {/* <Route path="/admin/reports" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>
                   <ReportsPage />
@@ -140,7 +142,7 @@ const App = () => (
                   <AuditLogsPage />
                 </DashboardLayout>
               </ProtectedRoute>
-            } />
+            } /> */}
             
             <Route path="/admin/settings" element={
               <ProtectedRoute allowedRoles={['admin']}>
@@ -166,6 +168,14 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            <Route path="/manager/approvals/:id" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <ApprovalsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/manager/team" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
@@ -174,10 +184,10 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/manager/calendar" element={
+            <Route path="/manager/team/:id" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
-                  <TeamCalendarPage />
+                  <TeamMemberDetailPage />
                 </DashboardLayout>
               </ProtectedRoute>
             } />
@@ -206,6 +216,14 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            <Route path="/employee/request-leave" element={
+              <ProtectedRoute allowedRoles={['employee']}>
+                <DashboardLayout>
+                  <RequestLeave />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/employee/history" element={
               <ProtectedRoute allowedRoles={['employee']}>
                 <DashboardLayout>
@@ -214,13 +232,6 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/employee/calendar" element={
-              <ProtectedRoute allowedRoles={['employee']}>
-                <DashboardLayout>
-                  <EmployeeCalendarPage />
-                </DashboardLayout>
-              </ProtectedRoute>
-            } />
             
             <Route path="/employee/profile" element={
               <ProtectedRoute allowedRoles={['employee']}>
@@ -246,7 +257,8 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-      </TooltipProvider>
+        </TooltipProvider>
+      </DashboardProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

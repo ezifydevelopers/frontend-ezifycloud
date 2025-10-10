@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
+import { adminAPI } from '@/lib/api';
 import LeaveTrendsChart from './components/LeaveTrendsChart';
 import DepartmentStats from './components/DepartmentStats';
 import LeaveBalanceReport from './components/LeaveBalanceReport';
@@ -40,18 +41,19 @@ const ReportsPage: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('thisMonth');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [loading, setLoading] = useState(false);
+  const [reportStats, setReportStats] = useState({
+    totalReports: 0,
+    activeUsers: 0,
+    dataPoints: 0,
+    exportSuccess: 0
+  });
+  const [reportTypes, setReportTypes] = useState([]);
+  const [departments, setDepartments] = useState(['All Departments']);
 
-  const departments = [
-    'All Departments',
-    'Engineering',
-    'Human Resources',
-    'Marketing',
-    'Sales',
-    'Finance',
-    'Operations',
-    'Customer Support',
-    'IT',
-  ];
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchReportData();
+  }, [selectedPeriod, selectedDepartment]);
 
   const periods = [
     { value: 'thisWeek', label: 'This Week' },
@@ -61,19 +63,71 @@ const ReportsPage: React.FC = () => {
     { value: 'thisYear', label: 'This Year' },
   ];
 
+  const fetchReportData = async () => {
+    try {
+      setLoading(true);
+      console.log('🔍 ReportsPage: Fetching report data...');
+      
+      const [reportDashboardResponse, availableReportsResponse] = await Promise.all([
+        adminAPI.getReports({ period: selectedPeriod }),
+        adminAPI.getReports({ type: 'available' })
+      ]);
+      
+      console.log('🔍 ReportsPage: API responses:', { reportDashboardResponse, availableReportsResponse });
+      
+      if (reportDashboardResponse.success && reportDashboardResponse.data) {
+        setReportStats({
+          totalReports: reportDashboardResponse.data.totalReports || 0,
+          activeUsers: reportDashboardResponse.data.activeUsers || 0,
+          dataPoints: reportDashboardResponse.data.dataPoints || 0,
+          exportSuccess: reportDashboardResponse.data.exportSuccess || 0
+        });
+      }
+      
+      if (availableReportsResponse.success && availableReportsResponse.data) {
+        setReportTypes(availableReportsResponse.data.reports || []);
+      }
+      
+      // Set departments from API or default
+      setDepartments(['All Departments', 'Engineering', 'Marketing', 'Sales', 'HR']);
+    } catch (error) {
+      console.error('❌ ReportsPage: Error fetching report data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch report data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExportReport = async (reportType: string) => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      toast({
-        title: 'Report exported',
-        description: `${reportType} report has been downloaded successfully`,
+      console.log('🔍 ReportsPage: Exporting report:', { reportType, selectedPeriod, selectedDepartment });
+      
+      const response = await adminAPI.exportReport({
+        type: reportType,
+        period: selectedPeriod,
+        department: selectedDepartment
       });
+      
+      console.log('🔍 ReportsPage: Export response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Export started',
+          description: `${reportType} report is being generated and will be downloaded shortly.`,
+        });
+      } else {
+        throw new Error(response.message || 'Export failed');
+      }
     } catch (error) {
+      console.error('❌ ReportsPage: Error exporting report:', error);
       toast({
         title: 'Export failed',
-        description: 'Failed to export report',
+        description: 'Failed to export report. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -82,68 +136,61 @@ const ReportsPage: React.FC = () => {
   };
 
   const handleRefreshData = async () => {
-    try {
-      setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast({
-        title: 'Data refreshed',
-        description: 'Report data has been updated',
-      });
-    } catch (error) {
-      toast({
-        title: 'Refresh failed',
-        description: 'Failed to refresh data',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
+    await fetchReportData();
+    toast({
+      title: 'Data refreshed',
+      description: 'Report data has been updated',
+    });
   };
 
-  // Mock statistics
-  const stats = [
+  // Real statistics from state
+  const stats: Array<{
+    title: string;
+    value: number | string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+    color: string;
+    trend?: { value: number; isPositive: boolean };
+  }> = [
     {
       title: 'Total Reports',
-      value: 24,
+      value: reportStats.totalReports,
       description: 'Generated this month',
       icon: FileText,
       color: 'bg-gradient-to-br from-blue-500 to-blue-600',
-      trend: { value: 12.5, isPositive: true },
     },
     {
       title: 'Active Users',
-      value: 156,
+      value: reportStats.activeUsers,
       description: 'Report viewers',
       icon: Users,
       color: 'bg-gradient-to-br from-green-500 to-emerald-600',
-      trend: { value: 8.3, isPositive: true },
     },
     {
       title: 'Data Points',
-      value: '2.4K',
+      value: reportStats.dataPoints,
       description: 'Processed today',
       icon: Activity,
       color: 'bg-gradient-to-br from-purple-500 to-pink-600',
-      trend: { value: 15.2, isPositive: true },
     },
     {
       title: 'Export Success',
-      value: '98.5%',
+      value: `${reportStats.exportSuccess}%`,
       description: 'Export success rate',
       icon: Download,
       color: 'bg-gradient-to-br from-amber-500 to-orange-500',
     },
   ];
 
-  const reportTypes = [
+  // Default report types when no data is available
+  const defaultReportTypes = [
     {
       id: 'leave-summary',
       title: 'Leave Summary Report',
       description: 'Comprehensive overview of all leave requests and approvals',
       icon: BarChart3,
       color: 'bg-blue-100 text-blue-800 border-blue-200',
-      lastGenerated: '2 hours ago',
+      lastGenerated: 'No data available',
     },
     {
       id: 'department-analysis',
@@ -151,7 +198,7 @@ const ReportsPage: React.FC = () => {
       description: 'Detailed breakdown by department and team performance',
       icon: PieChart,
       color: 'bg-green-100 text-green-800 border-green-200',
-      lastGenerated: '1 day ago',
+      lastGenerated: 'No data available',
     },
     {
       id: 'trend-analysis',
@@ -159,7 +206,7 @@ const ReportsPage: React.FC = () => {
       description: 'Historical trends and patterns in leave requests',
       icon: LineChart,
       color: 'bg-purple-100 text-purple-800 border-purple-200',
-      lastGenerated: '3 days ago',
+      lastGenerated: 'No data available',
     },
     {
       id: 'compliance-report',
@@ -167,7 +214,7 @@ const ReportsPage: React.FC = () => {
       description: 'Policy compliance and regulatory requirements',
       icon: Target,
       color: 'bg-orange-100 text-orange-800 border-orange-200',
-      lastGenerated: '1 week ago',
+      lastGenerated: 'No data available',
     },
     {
       id: 'performance-metrics',
@@ -175,7 +222,7 @@ const ReportsPage: React.FC = () => {
       description: 'Key performance indicators and benchmarks',
       icon: Award,
       color: 'bg-pink-100 text-pink-800 border-pink-200',
-      lastGenerated: '2 days ago',
+      lastGenerated: 'No data available',
     },
     {
       id: 'audit-trail',
@@ -183,12 +230,16 @@ const ReportsPage: React.FC = () => {
       description: 'Complete audit trail of all system activities',
       icon: Clock,
       color: 'bg-cyan-100 text-cyan-800 border-cyan-200',
-      lastGenerated: '4 hours ago',
+      lastGenerated: 'No data available',
     },
   ];
 
+  const displayReportTypes = reportTypes.length > 0 ? reportTypes : defaultReportTypes;
+
   return (
-    <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
       {/* Header */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl blur-3xl"></div>
@@ -309,7 +360,7 @@ const ReportsPage: React.FC = () => {
 
       {/* Report Types Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {reportTypes.map((report, index) => (
+        {displayReportTypes.map((report, index) => (
           <Card
             key={report.id}
             className="group relative overflow-hidden bg-white/80 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
@@ -371,7 +422,7 @@ const ReportsPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <LeaveTrendsChart />
+            <LeaveTrendsChart period={selectedPeriod} />
           </CardContent>
         </Card>
 
@@ -386,7 +437,7 @@ const ReportsPage: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <DepartmentStats />
+            <DepartmentStats department={selectedDepartment} />
           </CardContent>
         </Card>
       </div>
@@ -405,6 +456,8 @@ const ReportsPage: React.FC = () => {
           <LeaveBalanceReport />
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   );
 };
