@@ -49,25 +49,31 @@ import { toast } from '@/hooks/use-toast';
 
 interface LeavePolicy {
   id: string;
-  name: string;
+  name?: string; // Optional for backward compatibility
+  leave_type?: string; // Actual API response field
   description: string;
-  leaveType: string;
+  leaveType?: string; // For backward compatibility
   type?: string; // For backward compatibility
-  maxDaysPerYear: number;
+  maxDaysPerYear?: number; // For backward compatibility
+  total_days_per_year?: number; // Actual API response field
   daysPerYear?: number; // For backward compatibility
-  maxDaysPerRequest: number;
-  carryForwardDays: number;
+  maxDaysPerRequest?: number; // For backward compatibility
+  carryForwardDays?: number; // For backward compatibility
+  can_carry_forward?: boolean; // Actual API response field
   carryForward?: boolean; // For backward compatibility
+  max_carry_forward_days?: number; // Actual API response field
   maxCarryForward?: number; // For backward compatibility
-  carryForwardExpiry: number;
-  requiresApproval: boolean;
-  requiresDocumentation: boolean;
+  carryForwardExpiry?: number; // For backward compatibility
+  requires_approval?: boolean; // Actual API response field
+  requiresApproval?: boolean; // For backward compatibility
+  allow_half_day?: boolean; // Actual API response field
+  requiresDocumentation?: boolean; // For backward compatibility
   advanceNotice?: number; // For backward compatibility
-  isActive: boolean;
-  applicableRoles: string[];
-  applicableDepartments: string[];
-  createdAt: string;
-  updatedAt: string;
+  isActive?: boolean; // For backward compatibility
+  applicableRoles?: string[]; // For backward compatibility
+  applicableDepartments?: string[]; // For backward compatibility
+  createdAt?: string; // For backward compatibility
+  updatedAt?: string; // For backward compatibility
 }
 
 const LeavePoliciesPage: React.FC = () => {
@@ -135,21 +141,24 @@ const LeavePoliciesPage: React.FC = () => {
       
       // Map frontend field names to backend field names
       const mappedData = {
-        name: policyData.name,
-        description: policyData.description,
-        leaveType: policyData.type?.toLowerCase() || 'annual', // Map 'type' to 'leaveType' and ensure lowercase
-        maxDaysPerYear: policyData.daysPerYear || 0,
-        maxDaysPerRequest: policyData.maxDaysPerRequest || policyData.daysPerYear || 0,
-        carryForwardDays: policyData.carryForward ? (policyData.maxCarryForward || 0) : 0,
-        carryForwardExpiry: policyData.carryForwardExpiry || 12,
-        requiresApproval: policyData.requiresApproval,
-        requiresDocumentation: policyData.requiresDocumentation || false,
-        isActive: policyData.isActive,
-        applicableRoles: ['employee', 'manager'],
-        applicableDepartments: ['Engineering', 'HR', 'Marketing'],
+        leaveType: policyData.type || 'annual',
+        description: policyData.description || '',
+        totalDaysPerYear: Number(policyData.daysPerYear) || 0,
+        canCarryForward: Boolean(policyData.carryForward),
+        maxCarryForwardDays: policyData.carryForward ? (Number(policyData.maxCarryForward) || 0) : null,
+        requiresApproval: Boolean(policyData.requiresApproval),
+        allowHalfDay: true, // Default to true since this field doesn't exist in the form
       };
       
       console.log('🔍 LeavePoliciesPage: Mapped data:', mappedData);
+      console.log('🔍 LeavePoliciesPage: Data types:', {
+        leaveType: typeof mappedData.leaveType,
+        totalDaysPerYear: typeof mappedData.totalDaysPerYear,
+        canCarryForward: typeof mappedData.canCarryForward,
+        maxCarryForwardDays: typeof mappedData.maxCarryForwardDays,
+        requiresApproval: typeof mappedData.requiresApproval,
+        allowHalfDay: typeof mappedData.allowHalfDay,
+      });
       
       let response;
       if (editingPolicy) {
@@ -303,8 +312,9 @@ const LeavePoliciesPage: React.FC = () => {
   };
 
   const filteredPolicies = policies.filter(policy => {
-    const policyType = policy.leaveType || policy.type || 'Unknown';
-    const matchesSearch = policy.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const policyType = policy.leaveType || policy.leave_type || policy.type || 'Unknown';
+    const policyName = policy.name || policy.leaveType || policy.leave_type || 'Unknown';
+    const matchesSearch = policyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          policyType.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
@@ -494,28 +504,28 @@ const LeavePoliciesPage: React.FC = () => {
                     >
                       <TableCell>
                         <div>
-                          <p className="font-semibold text-slate-900">{policy.name}</p>
+                          <p className="font-semibold text-slate-900">{policy.name || policy.leaveType || policy.leave_type || 'Unknown Policy'}</p>
                           <p className="text-sm text-slate-500">{policy.description}</p>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getTypeColor(policy.leaveType || policy.type)}>
-                          {policy.leaveType || policy.type}
+                        <Badge className={getTypeColor(policy.leaveType || policy.leave_type || policy.type)}>
+                          {policy.leaveType || policy.leave_type || policy.type}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Calendar className="h-4 w-4 text-slate-400" />
-                          <span className="font-medium">{policy.maxDaysPerYear || policy.daysPerYear}</span>
+                          <span className="font-medium">{policy.totalDaysPerYear || policy.maxDaysPerYear || policy.total_days_per_year || policy.daysPerYear}</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          {(policy.carryForwardDays > 0) ? (
+                          {((policy.maxCarryForwardDays || policy.carryForwardDays || policy.max_carry_forward_days || 0) > 0) ? (
                             <>
                               <CheckCircle className="h-4 w-4 text-green-500" />
                               <span className="text-sm text-slate-600">
-                                {policy.carryForwardDays} days max
+                                {policy.maxCarryForwardDays || policy.carryForwardDays || policy.max_carry_forward_days} days max
                               </span>
                             </>
                           ) : (
@@ -528,7 +538,7 @@ const LeavePoliciesPage: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          {policy.requiresApproval ? (
+                          {(policy.requiresApproval || policy.requires_approval) ? (
                             <>
                               <AlertCircle className="h-4 w-4 text-amber-500" />
                               <span className="text-sm text-slate-600">
@@ -546,11 +556,11 @@ const LeavePoliciesPage: React.FC = () => {
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Switch
-                            checked={policy.isActive}
+                            checked={policy.isActive ?? true}
                             onCheckedChange={() => handleToggleStatus(policy.id)}
                           />
-                          <Badge className={getStatusColor(policy.isActive)}>
-                            {policy.isActive ? 'Active' : 'Inactive'}
+                          <Badge className={getStatusColor(policy.isActive ?? true)}>
+                            {(policy.isActive ?? true) ? 'Active' : 'Inactive'}
                           </Badge>
                         </div>
                       </TableCell>
@@ -572,7 +582,7 @@ const LeavePoliciesPage: React.FC = () => {
                             variant="ghost"
                             onClick={() => handleDeactivatePolicy(policy.id)}
                             className="hover:bg-orange-50 hover:text-orange-700"
-                            title={policy.isActive ? "Deactivate Policy" : "Policy is already inactive"}
+                            title={(policy.isActive ?? true) ? "Deactivate Policy" : "Policy is already inactive"}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -643,15 +653,15 @@ const PolicyForm: React.FC<{
   onCancel: () => void;
 }> = ({ policy, onSave, onCancel }) => {
   const [formData, setFormData] = useState<PolicyFormData>({
-    name: policy?.name || '',
+    name: policy?.name || policy?.leaveType || '',
     type: policy?.leaveType || policy?.type || 'annual',
-    daysPerYear: policy?.maxDaysPerYear || policy?.daysPerYear || 0,
-    carryForward: (policy?.carryForwardDays || 0) > 0,
-    maxCarryForward: policy?.carryForwardDays || 0,
-    requiresApproval: policy?.requiresApproval || true,
-    advanceNotice: policy?.advanceNotice || 0,
+    daysPerYear: policy?.totalDaysPerYear || policy?.maxDaysPerYear || policy?.daysPerYear || 0,
+    carryForward: policy?.canCarryForward || (policy?.maxCarryForwardDays || 0) > 0,
+    maxCarryForward: policy?.maxCarryForwardDays || 0,
+    requiresApproval: policy?.requiresApproval !== undefined ? policy.requiresApproval : true,
+    advanceNotice: 0, // This field doesn't exist in the schema
     description: policy?.description || '',
-    isActive: policy?.isActive ?? true,
+    isActive: policy?.isActive !== undefined ? policy.isActive : true,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -681,12 +691,12 @@ const PolicyForm: React.FC<{
             className="w-full px-3 py-2 border border-slate-200 rounded-md focus:border-blue-300 focus:ring-blue-200"
             required
           >
-            <option value="Annual">Annual Leave</option>
-            <option value="Sick">Sick Leave</option>
-            <option value="Casual">Casual Leave</option>
-            <option value="Maternity">Maternity Leave</option>
-            <option value="Paternity">Paternity Leave</option>
-            <option value="Emergency">Emergency Leave</option>
+            <option value="annual">Annual Leave</option>
+            <option value="sick">Sick Leave</option>
+            <option value="casual">Casual Leave</option>
+            <option value="maternity">Maternity Leave</option>
+            <option value="paternity">Paternity Leave</option>
+            <option value="emergency">Emergency Leave</option>
           </select>
         </div>
         <div>
@@ -694,8 +704,11 @@ const PolicyForm: React.FC<{
           <Input
             id="daysPerYear"
             type="number"
-            value={formData.daysPerYear}
-            onChange={(e) => setFormData(prev => ({ ...prev, daysPerYear: parseInt(e.target.value) }))}
+            value={formData.daysPerYear || ''}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              setFormData(prev => ({ ...prev, daysPerYear: isNaN(value) ? 0 : value }));
+            }}
             placeholder="Enter days per year"
             required
           />
@@ -705,8 +718,11 @@ const PolicyForm: React.FC<{
           <Input
             id="advanceNotice"
             type="number"
-            value={formData.advanceNotice}
-            onChange={(e) => setFormData(prev => ({ ...prev, advanceNotice: parseInt(e.target.value) }))}
+            value={formData.advanceNotice || ''}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              setFormData(prev => ({ ...prev, advanceNotice: isNaN(value) ? 0 : value }));
+            }}
             placeholder="Enter advance notice days"
           />
         </div>
@@ -728,8 +744,11 @@ const PolicyForm: React.FC<{
             <Input
               id="maxCarryForward"
               type="number"
-              value={formData.maxCarryForward}
-              onChange={(e) => setFormData(prev => ({ ...prev, maxCarryForward: parseInt(e.target.value) }))}
+              value={formData.maxCarryForward || ''}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                setFormData(prev => ({ ...prev, maxCarryForward: isNaN(value) ? 0 : value }));
+              }}
               placeholder="Enter max carry forward days"
             />
           </div>

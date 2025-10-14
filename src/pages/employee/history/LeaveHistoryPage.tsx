@@ -78,6 +78,7 @@ interface LeaveRequest {
 const LeaveHistoryPage: React.FC = () => {
   const { user } = useAuth();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [leaveBalance, setLeaveBalance] = useState<{ [key: string]: { remaining: number; total: number; used: number } }>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
@@ -104,6 +105,53 @@ const LeaveHistoryPage: React.FC = () => {
     };
     return typeMap[dbValue] || dbValue;
   };
+
+  const fetchLeaveBalance = useCallback(async () => {
+    try {
+      if (!user) {
+        console.warn('User not authenticated, skipping leave balance fetch');
+        return;
+      }
+
+      console.log('🔍 LeaveHistory: Fetching leave balance...');
+      
+      // Add cache-busting timestamp
+      const timestamp = Date.now();
+      
+      const balanceResponse = await employeeAPI.getLeaveBalance({ _t: timestamp } as Record<string, unknown>);
+      
+      console.log('🔍 LeaveHistory: Leave balance API response:', balanceResponse);
+
+      if (balanceResponse.success && balanceResponse.data) {
+        const balance = balanceResponse.data;
+        console.log('✅ LeaveHistory: Leave balance data:', balance);
+        
+        // Process all leave types from the API response
+        const dynamicLeaveBalance: { [key: string]: { remaining: number; total: number; used: number } } = {};
+        
+        Object.keys(balance).forEach(leaveType => {
+          if (leaveType !== 'total' && typeof balance[leaveType] === 'object') {
+            const leaveData = balance[leaveType];
+            const total = leaveData?.total || 0;
+            const used = leaveData?.used || 0;
+            
+            dynamicLeaveBalance[leaveType] = {
+              remaining: total - used,
+              total: total,
+              used: used
+            };
+          }
+        });
+        
+        console.log('🔍 LeaveHistory: Processed leave balance:', dynamicLeaveBalance);
+        setLeaveBalance(dynamicLeaveBalance);
+      } else {
+        console.warn('❌ LeaveHistory: Leave balance API failed or returned no data');
+      }
+    } catch (error) {
+      console.error('Error fetching leave balance:', error);
+    }
+  }, [user]);
 
   const fetchLeaveRequests = useCallback(async () => {
     try {
@@ -185,8 +233,9 @@ const LeaveHistoryPage: React.FC = () => {
   useEffect(() => {
     if (user !== undefined) {
       fetchLeaveRequests();
+      fetchLeaveBalance();
     }
-  }, [filters, user, fetchLeaveRequests]);
+  }, [filters, user, fetchLeaveRequests, fetchLeaveBalance]);
 
   const filteredRequests = leaveRequests.filter(request => {
     const displayName = getLeaveTypeDisplayName(request.leaveType);
@@ -567,42 +616,43 @@ const LeaveHistoryPage: React.FC = () => {
             </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {[
-                { displayName: 'Annual Leave', dbValue: 'annual', maxDays: 25 },
-                { displayName: 'Sick Leave', dbValue: 'sick', maxDays: 10 },
-                { displayName: 'Casual Leave', dbValue: 'casual', maxDays: 8 }
-              ].map((leaveType) => {
-                const typeRequests = leaveRequests.filter(req => 
-                  req.leaveType === leaveType.dbValue && req.status === 'approved'
-                );
-                const totalDays = typeRequests.reduce((sum, req) => sum + req.days, 0);
-                const percentage = (totalDays / leaveType.maxDays) * 100;
+              {Object.keys(leaveBalance).length > 0 ? (
+                Object.entries(leaveBalance).map(([type, balance]) => {
+                  const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
+                  const displayName = getLeaveTypeDisplayName(type);
 
-                // Debug logging
-                console.log(`🔍 Leave Usage - ${leaveType.displayName}:`, {
-                  dbValue: leaveType.dbValue,
-                  typeRequests: typeRequests.length,
-                  totalDays,
-                  maxDays: leaveType.maxDays,
-                  percentage
-                });
+                  // Debug logging
+                  console.log(`🔍 Leave Usage - ${displayName}:`, {
+                    type,
+                    balance,
+                    percentage
+                  });
 
-                return (
-                  <div key={leaveType.displayName} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{leaveType.displayName}</span>
-                      <span className="text-slate-500">{totalDays}/{leaveType.maxDays} days</span>
+                  return (
+                    <div key={type} className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{displayName}</span>
+                        <span className="text-slate-500">{balance.used.toFixed(1)}/{balance.total} days</span>
+                      </div>
+                      <Progress 
+                        value={percentage} 
+                        className="h-2 bg-slate-200"
+                      />
+                      <div className="text-xs text-slate-500">
+                        {Math.round(percentage)}% used
+                      </div>
                     </div>
-                    <Progress 
-                      value={percentage} 
-                      className="h-2 bg-slate-200"
-                    />
-                    <div className="text-xs text-slate-500">
-                      {Math.round(percentage)}% used
-                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-8">
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <TrendingUp className="h-8 w-8 text-blue-500" />
                   </div>
-                );
-              })}
+                  <h3 className="text-lg font-semibold text-slate-700 mb-2">No Leave Data</h3>
+                  <p className="text-slate-500">No leave balance information available.</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

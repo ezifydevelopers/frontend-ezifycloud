@@ -20,6 +20,30 @@ import { LeavePolicy } from '@/types/leave';
 // Dynamic schema will be created based on available policies
 const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
   const leaveTypes = policies.map(policy => policy.leaveType);
+  // If no policies are available, use a default schema
+  if (leaveTypes.length === 0) {
+    return z.object({
+      leaveType: z.string().min(1, 'Leave type is required'),
+      startDate: z.date({
+        required_error: "Start date is required",
+      }),
+      endDate: z.date({
+        required_error: "End date is required",
+      }),
+      reason: z.string().min(10, 'Reason must be at least 10 characters'),
+      isHalfDay: z.boolean().default(false),
+      halfDayPeriod: z.enum(['morning', 'afternoon']).optional(),
+      emergencyContact: z.string().optional(),
+      workHandover: z.string().optional(),
+    }).refine(data => data.endDate >= data.startDate, {
+      message: "End date cannot be before start date",
+      path: ["endDate"],
+    }).refine(data => !data.isHalfDay || data.halfDayPeriod, {
+      message: "Half day period is required when half day is selected",
+      path: ["halfDayPeriod"],
+    });
+  }
+  
   return z.object({
     leaveType: z.enum(leaveTypes as [string, ...string[]]),
     startDate: z.date({
@@ -185,22 +209,22 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   // Create leave type options from fetched policies
   const leaveTypeOptions = leavePolicies.map(policy => ({
     value: policy.leaveType,
-    label: policy.name
+    label: policy.name || policy.leaveType || 'Unknown Policy'
   }));
 
+  console.log('🔍 LeaveRequestForm: Leave policies:', leavePolicies);
+  console.log('🔍 LeaveRequestForm: Leave type options:', leaveTypeOptions);
+
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Submit Leave Request
-        </CardTitle>
-        <CardDescription>
-          Fill out the form below to request time off. Your manager will be notified for approval.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className={className}>
+      <div className="space-y-6">
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          {/* Debug info - remove in production */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-xs text-gray-500 p-2 bg-gray-100 rounded">
+              Debug: {leavePolicies.length} policies loaded, {leaveTypeOptions.length} options available
+            </div>
+          )}
           {/* Leave Type */}
           <div className="space-y-2">
             <Label htmlFor="leaveType">Leave Type *</Label>
@@ -217,12 +241,16 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
               </div>
             ) : (
               <Select onValueChange={(value) => setValue('leaveType', value as LeaveRequestFormData['leaveType'])}>
-                <SelectTrigger className={errors.leaveType ? 'border-destructive' : ''}>
+                <SelectTrigger className={`w-full h-10 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm focus:border-blue-300 focus:ring-2 focus:ring-blue-200 focus:outline-none ${errors.leaveType ? 'border-red-500' : ''}`}>
                   <SelectValue placeholder="Select leave type" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white border border-slate-200 rounded-md shadow-lg z-50 p-1">
                   {leaveTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem 
+                      key={option.value} 
+                      value={option.value} 
+                      className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-slate-100 focus:bg-slate-100 data-[highlighted]:bg-slate-100 data-[state=checked]:bg-blue-50 data-[state=checked]:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                    >
                       {option.label}
                     </SelectItem>
                   ))}
@@ -301,12 +329,22 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             <div className="space-y-2">
               <Label htmlFor="halfDayPeriod">Half Day Period</Label>
               <Select onValueChange={(value) => setValue('halfDayPeriod', value as LeaveRequestFormData['halfDayPeriod'])}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full h-10 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm focus:border-blue-300 focus:ring-2 focus:ring-blue-200 focus:outline-none">
                   <SelectValue placeholder="Select period" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="morning">Morning (9 AM - 1 PM)</SelectItem>
-                  <SelectItem value="afternoon">Afternoon (1 PM - 5 PM)</SelectItem>
+                <SelectContent className="bg-white border border-slate-200 rounded-md shadow-lg z-50 p-1">
+                  <SelectItem 
+                    value="morning" 
+                    className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-slate-100 focus:bg-slate-100 data-[highlighted]:bg-slate-100 data-[state=checked]:bg-blue-50 data-[state=checked]:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    Morning (9 AM - 1 PM)
+                  </SelectItem>
+                  <SelectItem 
+                    value="afternoon" 
+                    className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-slate-100 focus:bg-slate-100 data-[highlighted]:bg-slate-100 data-[state=checked]:bg-blue-50 data-[state=checked]:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    Afternoon (1 PM - 5 PM)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -419,8 +457,8 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             )}
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

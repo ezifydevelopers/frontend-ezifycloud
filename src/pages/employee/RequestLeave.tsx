@@ -36,12 +36,8 @@ const RequestLeave: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
 
-  // Real data state
-  const [leaveBalance, setLeaveBalance] = useState({
-    annual: { remaining: 0, total: 0, used: 0 },
-    sick: { remaining: 0, total: 0, used: 0 },
-    casual: { remaining: 0, total: 0, used: 0 },
-  });
+  // Real data state - dynamic leave balance
+  const [leaveBalance, setLeaveBalance] = useState<{ [key: string]: { remaining: number; total: number; used: number } }>({});
 
   const [recentRequests, setRecentRequests] = useState([]);
 
@@ -85,43 +81,48 @@ const RequestLeave: React.FC = () => {
         const recentRequests = requestsResponse.success ? requestsResponse.data : [];
         const approvedRequests = recentRequests.filter(req => req.status === 'approved');
         
-        const usedLeave = {
-          annual: 0,
-          sick: 0,
-          casual: 0
-        };
+        const usedLeave: { [key: string]: number } = {};
 
         approvedRequests.forEach(request => {
           const leaveType = request.leaveType || request.type;
           const days = request.days || 0;
           
-          if (leaveType === 'annual' || leaveType === 'Annual Leave') {
-            usedLeave.annual += days;
-          } else if (leaveType === 'sick' || leaveType === 'Sick Leave') {
-            usedLeave.sick += days;
-          } else if (leaveType === 'casual' || leaveType === 'Casual Leave') {
-            usedLeave.casual += days;
+          // Normalize leave type to lowercase for consistency
+          const normalizedType = leaveType?.toLowerCase() || '';
+          
+          if (normalizedType) {
+            usedLeave[normalizedType] = (usedLeave[normalizedType] || 0) + days;
           }
         });
         
         // Handle nested structure from API with real-time calculations
-        setLeaveBalance({
-          annual: { 
-            remaining: (balance.annual?.total || 0) - usedLeave.annual, 
-            total: balance.annual?.total || 0, 
-            used: usedLeave.annual
-          },
-          sick: { 
-            remaining: (balance.sick?.total || 0) - usedLeave.sick, 
-            total: balance.sick?.total || 0, 
-            used: usedLeave.sick
-          },
-          casual: { 
-            remaining: (balance.casual?.total || 0) - usedLeave.casual, 
-            total: balance.casual?.total || 0, 
-            used: usedLeave.casual
-          },
+        // The API returns dynamic leave types, so we need to handle them dynamically
+        const dynamicLeaveBalance: { [key: string]: { remaining: number; total: number; used: number } } = {};
+        
+        // Process all leave types from the API response
+        console.log('🔍 RequestLeave: Processing balance data:', balance);
+        console.log('🔍 RequestLeave: Used leave data:', usedLeave);
+        
+        Object.keys(balance).forEach(leaveType => {
+          if (leaveType !== 'total' && typeof balance[leaveType] === 'object') {
+            const leaveData = balance[leaveType];
+            const used = usedLeave[leaveType] || 0;
+            const total = leaveData?.total || 0;
+            
+            console.log(`🔍 RequestLeave: Processing ${leaveType}:`, { leaveData, used, total });
+            
+            dynamicLeaveBalance[leaveType] = {
+              remaining: total - used,
+              total: total,
+              used: used
+            };
+          }
         });
+        
+        console.log('🔍 RequestLeave: Final dynamic leave balance:', dynamicLeaveBalance);
+        
+        // Set the dynamic leave balance
+        setLeaveBalance(dynamicLeaveBalance);
       } else {
         console.warn('❌ Leave balance API failed or returned no data');
         console.warn('❌ Balance response success:', balanceResponse.success);
@@ -214,8 +215,8 @@ const RequestLeave: React.FC = () => {
   };
 
   // Calculate real statistics from leave balance
-  const totalLeaveDays = leaveBalance.annual.total + leaveBalance.sick.total + leaveBalance.casual.total;
-  const usedLeaveDays = leaveBalance.annual.used + leaveBalance.sick.used + leaveBalance.casual.used;
+  const totalLeaveDays = Object.values(leaveBalance).reduce((sum, balance) => sum + balance.total, 0);
+  const usedLeaveDays = Object.values(leaveBalance).reduce((sum, balance) => sum + balance.used, 0);
   const pendingRequests = recentRequests.filter(req => req.status === 'pending').length;
   const approvedRequests = recentRequests.filter(req => req.status === 'approved').length;
   const totalRequests = recentRequests.length;
@@ -249,7 +250,7 @@ const RequestLeave: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50 overflow-x-hidden">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-6">
           {/* Header */}
@@ -333,7 +334,7 @@ const RequestLeave: React.FC = () => {
       </div>
 
       {/* Main Content Grid - Better Organized */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-start">
         {/* Left Column - Leave Balance Summary and Recent Requests */}
         <div className="lg:col-span-1 flex flex-col space-y-6">
           {/* Leave Balance Overview */}
@@ -350,45 +351,63 @@ const RequestLeave: React.FC = () => {
                 <p className="text-slate-600 text-sm mt-2">Track your remaining leave days across different categories</p>
               </CardHeader>
               <CardContent className="space-y-4">
-                {Object.entries(leaveBalance).map(([type, balance], index) => {
-                  const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
-                  const getProgressColor = (percent: number) => {
-                    if (percent >= 70) return 'bg-green-500';
-                    if (percent >= 40) return 'bg-yellow-500';
-                    return 'bg-red-500';
-                  };
+                {Object.entries(leaveBalance).length > 0 ? (
+                  Object.entries(leaveBalance).map(([type, balance], index) => {
+                    const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
+                    const getProgressColor = (percent: number) => {
+                      if (percent >= 70) return 'bg-green-500';
+                      if (percent >= 40) return 'bg-yellow-500';
+                      return 'bg-red-500';
+                    };
 
-                  return (
-                    <div
-                      key={type}
-                      className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-blue-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
-                      style={{ animationDelay: `${index * 100}ms` }}
-                    >
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full bg-gradient-to-r ${
-                            type === 'annual' ? 'from-blue-500 to-cyan-500' :
-                            type === 'sick' ? 'from-red-500 to-pink-500' :
-                            type === 'casual' ? 'from-green-500 to-emerald-500' :
-                            'from-gray-500 to-slate-500'
-                          }`}></div>
-                          <span className="font-semibold text-slate-700 capitalize">{type} Leave</span>
+                    // Get color for leave type
+                    const getLeaveTypeColor = (leaveType: string) => {
+                      switch (leaveType.toLowerCase()) {
+                        case 'annual': return 'from-blue-500 to-cyan-500';
+                        case 'sick': return 'from-red-500 to-pink-500';
+                        case 'casual': return 'from-green-500 to-emerald-500';
+                        case 'maternity': return 'from-purple-500 to-pink-500';
+                        case 'paternity': return 'from-indigo-500 to-blue-500';
+                        case 'emergency': return 'from-orange-500 to-red-500';
+                        default: return 'from-gray-500 to-slate-500';
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={type}
+                        className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-blue-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
+                        style={{ animationDelay: `${index * 100}ms` }}
+                      >
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full bg-gradient-to-r ${getLeaveTypeColor(type)}`}></div>
+                            <span className="font-semibold text-slate-700 capitalize">{type} Leave</span>
+                          </div>
+                          <span className="text-sm font-medium text-slate-600">
+                            {balance.used.toFixed(1)} / {balance.total} days
+                          </span>
                         </div>
-                        <span className="text-sm font-medium text-slate-600">
-                          {balance.used.toFixed(1)} / {balance.total} days
-                        </span>
+                        <Progress 
+                          value={percentage} 
+                          className="h-2 mb-2"
+                        />
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Used: <span className="font-medium text-slate-700">{balance.used.toFixed(1)}</span></span>
+                          <span className="text-slate-500">Remaining: <span className="font-medium text-slate-700">{balance.remaining.toFixed(1)}</span></span>
+                        </div>
                       </div>
-                      <Progress 
-                        value={percentage} 
-                        className="h-2 mb-2"
-                      />
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Used: <span className="font-medium text-slate-700">{balance.used.toFixed(1)}</span></span>
-                        <span className="text-slate-500">Remaining: <span className="font-medium text-slate-700">{balance.remaining.toFixed(1)}</span></span>
-                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                      <CheckCircle className="h-8 w-8 text-blue-500" />
                     </div>
-                  );
-            })}
+                    <h3 className="text-lg font-semibold text-slate-700 mb-2">No Leave Policies</h3>
+                    <p className="text-slate-500">No leave policies are currently available.</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -491,7 +510,7 @@ const RequestLeave: React.FC = () => {
         <div className="lg:col-span-1 flex flex-col">
           <div className="relative group flex-1">
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
-            <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl h-full flex flex-col">
+            <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl h-full flex flex-col max-h-[800px]">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-3 text-xl">
                   <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
@@ -501,9 +520,10 @@ const RequestLeave: React.FC = () => {
                 </CardTitle>
                 <p className="text-slate-600 text-sm mt-2">Fill out the form below to submit your leave request</p>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
+              <CardContent className="flex-1 flex flex-col overflow-auto">
                 <LeaveRequestForm 
                   onSubmit={handleFormSubmit}
+                  className="flex-1"
                 />
               </CardContent>
             </Card>

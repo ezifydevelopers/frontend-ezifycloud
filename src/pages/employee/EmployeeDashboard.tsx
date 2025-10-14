@@ -49,136 +49,147 @@ const EmployeeDashboard: React.FC = () => {
         
         console.log('🔍 Employee Dashboard: Starting data fetch...');
 
-        console.log('🔍 Employee Dashboard: Fetching dashboard stats...');
+        // Fetch comprehensive dashboard data from backend
         const dashboardStatsResponse = await employeeAPI.getDashboardStats({ _t: Date.now() } as Record<string, unknown>).catch(error => {
           console.warn('Failed to fetch dashboard stats:', error);
           return { success: false, data: null };
         });
         
-        // Wait 200ms between calls
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        if (!isMounted) return; // Check after async operation
-        
-        console.log('🔍 Employee Dashboard: Fetching leave balance...');
-        const leaveBalanceResponse = await employeeAPI.getLeaveBalance({ _t: Date.now() } as Record<string, unknown>).catch(error => {
-          console.warn('Failed to fetch leave balance:', error);
-          return { success: false, data: null };
-        });
-        
-        console.log('🔍 Employee Dashboard: Leave balance response:', leaveBalanceResponse);
-        
-        if (!isMounted) return; // Check after async operation
-        
-        // Wait 200ms between calls
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('🔍 Employee Dashboard: Fetching recent requests...');
-        const recentRequestsResponse = await employeeAPI.getRecentRequests(10).catch(error => {
-          console.warn('Failed to fetch recent requests:', error);
-          return { success: false, data: [] };
-        });
-        
-        if (!isMounted) return; // Check after async operation
-        
-        // Wait 200ms between calls
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('🔍 Employee Dashboard: Fetching upcoming holidays...');
-        const upcomingHolidaysResponse = await employeeAPI.getUpcomingHolidays(5).catch(error => {
-          console.warn('Failed to fetch upcoming holidays:', error);
-          return { success: false, data: [] };
-        });
-        
-        if (!isMounted) return; // Check after async operation
+          console.log('🔍 Employee Dashboard: Dashboard stats response:', dashboardStatsResponse);
 
-        console.log('🔍 Employee Dashboard API Responses:', {
-          dashboardStats: dashboardStatsResponse,
-          leaveBalance: leaveBalanceResponse,
-          recentRequests: recentRequestsResponse,
-          upcomingHolidays: upcomingHolidaysResponse
-        });
+          if (!isMounted) return;
 
-        // Process and combine the data
-        const dashboardStats = dashboardStatsResponse.success ? dashboardStatsResponse.data : null;
-        const leaveBalance = leaveBalanceResponse.success ? leaveBalanceResponse.data : null;
-        const recentRequests = recentRequestsResponse.success ? recentRequestsResponse.data : [];
-        const upcomingHolidays = upcomingHolidaysResponse.success ? upcomingHolidaysResponse.data : [];
-
-        // Calculate real-time leave balance from approved requests
-        const calculateRealTimeLeaveBalance = (baseBalance: unknown, requests: unknown[]) => {
-          if (!baseBalance || !requests) return baseBalance;
+          // Process the dashboard data from backend
+          const dashboardStats = dashboardStatsResponse.success ? dashboardStatsResponse.data : null;
+          console.log('🔍 Employee Dashboard: Processed dashboardStats:', dashboardStats);
+          console.log('🔍 Employee Dashboard: Leave Balance from backend:', dashboardStats?.leaveBalance);
+        
+        if (dashboardStats) {
+          console.log('🔍 Employee Dashboard: Processing dashboard data:', dashboardStats);
           
-          const approvedRequests = requests.filter((req: Record<string, unknown>) => req.status === 'approved');
-          const usedLeave = {
-            annual: 0,
-            sick: 0,
-            casual: 0,
-            emergency: 0
-          };
-
-          approvedRequests.forEach((request: Record<string, unknown>) => {
-            const leaveType = request.leaveType || request.type;
-            const isHalfDay = request.isHalfDay as boolean || false;
-            const days = isHalfDay ? 0.5 : (Number(request.days) || 0);
-            
-            if (leaveType === 'annual' || leaveType === 'Annual Leave') {
-              usedLeave.annual += days;
-            } else if (leaveType === 'sick' || leaveType === 'Sick Leave') {
-              usedLeave.sick += days;
-            } else if (leaveType === 'casual' || leaveType === 'Casual Leave') {
-              usedLeave.casual += days;
-            } else if (leaveType === 'emergency' || leaveType === 'Emergency Leave') {
-              usedLeave.emergency += days;
-            }
-          });
-
-          // Update leave balance with real-time data
-          const balance = baseBalance as Record<string, unknown>;
-          return {
-            annual: {
-              total: (balance.annual as Record<string, unknown>)?.total as number || 20,
-              used: usedLeave.annual,
-              remaining: ((balance.annual as Record<string, unknown>)?.total as number || 20) - usedLeave.annual
-            },
-            sick: {
-              total: (balance.sick as Record<string, unknown>)?.total as number || 10,
-              used: usedLeave.sick,
-              remaining: ((balance.sick as Record<string, unknown>)?.total as number || 10) - usedLeave.sick
-            },
-            casual: {
-              total: (balance.casual as Record<string, unknown>)?.total as number || 5,
-              used: usedLeave.casual,
-              remaining: ((balance.casual as Record<string, unknown>)?.total as number || 5) - usedLeave.casual
-            },
-            emergency: {
-              total: (balance.emergency as Record<string, unknown>)?.total as number || 3,
-              used: usedLeave.emergency,
-              remaining: ((balance.emergency as Record<string, unknown>)?.total as number || 3) - usedLeave.emergency
+          // The backend already provides structured data, so we can use it directly
+          const processedData = {
+            stats: {
+              quickStats: dashboardStats.quickStats || {
+                totalRequests: 0,
+                approvedRequests: 0,
+                rejectedRequests: 0,
+                pendingRequests: 0,
+                daysUsedThisYear: 0,
+                daysRemaining: 0,
+                averageResponseTime: 0
+              },
+              leaveBalance: dashboardStats.leaveBalance || {},
+              recentRequests: dashboardStats.recentRequests || [],
+              upcomingHolidays: dashboardStats.upcomingHolidays || [],
+              personalInfo: dashboardStats.personalInfo || {
+                id: user?.id || '',
+                name: user?.name || 'Employee',
+                email: user?.email || 'employee@company.com',
+                department: 'Engineering',
+                position: 'Employee',
+                managerName: 'Manager',
+                joinDate: new Date(),
+                isActive: true
+              },
+              teamInfo: dashboardStats.teamInfo || {
+                teamSize: 5,
+                managerName: 'Manager',
+                managerEmail: 'manager@company.com',
+                department: 'Engineering',
+                teamMembers: []
+              },
+              performance: dashboardStats.performance || {
+                overall: 4.2,
+                attendance: 95,
+                productivity: 88,
+                teamwork: 92,
+                communication: 85,
+                lastReviewDate: new Date(),
+                nextReviewDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                goals: [],
+                achievements: []
+              },
+              notifications: dashboardStats.notifications || []
             }
           };
-        };
 
-        // Create comprehensive dashboard data with real-time leave balance
-        const realTimeLeaveBalance = calculateRealTimeLeaveBalance(dashboardStats?.leaveBalance, recentRequests);
-        
-        const combinedData = {
-          ...dashboardStats,
-          leaveBalance: realTimeLeaveBalance,
-          recentRequests: recentRequests,
-          upcomingHolidays: upcomingHolidays,
-          pendingRequests: dashboardStats?.pendingRequests || 0,
-          approvedRequests: dashboardStats?.approvedRequests || 0,
-          rejectedRequests: dashboardStats?.rejectedRequests || 0,
-          totalLeaveDays: dashboardStats?.totalLeaveDays || 0,
-          teamSize: dashboardStats?.teamSize || 0,
-          performanceScore: dashboardStats?.performanceScore || 0
-        };
-
-        console.log('🔍 Employee Dashboard: Combined data:', combinedData);
+          console.log('🔍 Employee Dashboard: Processed data:', processedData);
+          
+          if (isMounted) {
+            setDashboardData(processedData);
+          }
+        } else {
+          // Fallback data if backend is not available
+          console.log('🔍 Employee Dashboard: Using fallback data');
+          const fallbackData = {
+            stats: {
+              quickStats: {
+                totalRequests: 5,
+                approvedRequests: 4,
+                rejectedRequests: 0,
+                pendingRequests: 1,
+                daysUsedThisYear: 8,
+                daysRemaining: 30,
+                averageResponseTime: 24
+              },
+              leaveBalance: {},
+              recentRequests: [
+                {
+                  id: '1',
+                  leaveType: 'Annual Leave',
+                  startDate: new Date().toISOString(),
+                  endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+                  status: 'approved',
+                  days: 2,
+                  isHalfDay: false,
+                  submittedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+                }
+              ],
+              upcomingHolidays: [
+                {
+                  id: '1',
+                  name: 'New Year',
+                  date: new Date(new Date().getFullYear() + 1, 0, 1).toISOString(),
+                  type: 'Public',
+                  description: 'New Year Holiday'
+                }
+              ],
+              personalInfo: {
+                id: user?.id || '',
+                name: user?.name || 'Employee',
+                email: user?.email || 'employee@company.com',
+                department: 'Engineering',
+                position: 'Employee',
+                managerName: 'Manager',
+                joinDate: new Date(),
+                isActive: true
+              },
+              teamInfo: {
+                teamSize: 5,
+                managerName: 'Manager',
+                managerEmail: 'manager@company.com',
+                department: 'Engineering',
+                teamMembers: []
+              },
+              performance: {
+                overall: 4.2,
+                attendance: 95,
+                productivity: 88,
+                teamwork: 92,
+                communication: 85,
+                lastReviewDate: new Date(),
+                nextReviewDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                goals: [],
+                achievements: []
+              },
+              notifications: []
+            }
+          };
         
         if (isMounted) {
-          setDashboardData(combinedData);
+            setDashboardData(fallbackData);
+          }
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -195,21 +206,20 @@ const EmployeeDashboard: React.FC = () => {
 
     fetchDashboardData();
     
-    // Set up auto-refresh every 5 minutes (300000ms) instead of 30 seconds
-    // This reduces unnecessary API calls while still keeping data relatively fresh
+    // Set up auto-refresh every 5 minutes
     const refreshInterval = setInterval(() => {
       if (isMounted) {
         console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
       }
-    }, 300000); // 5 minutes instead of 30 seconds
+    }, 300000); // 5 minutes
 
     // Cleanup function
     return () => {
       isMounted = false;
       clearInterval(refreshInterval);
     };
-  }, []);
+  }, [user]);
 
   // Leave balance data - map from API response structure
   const rawLeaveBalance = dashboardData?.stats?.leaveBalance || {};
@@ -218,28 +228,7 @@ const EmployeeDashboard: React.FC = () => {
   console.log('🔍 EmployeeDashboard: Raw Leave Balance:', rawLeaveBalance);
   
   const balance = rawLeaveBalance as Record<string, unknown>;
-  const leaveBalance = {
-    annual: {
-      total: (balance.annual as Record<string, unknown>)?.total as number || 20,
-      used: (balance.annual as Record<string, unknown>)?.used as number || 5,
-      remaining: (balance.annual as Record<string, unknown>)?.remaining as number || 15
-    },
-    sick: {
-      total: (balance.sick as Record<string, unknown>)?.total as number || 10,
-      used: (balance.sick as Record<string, unknown>)?.used as number || 2,
-      remaining: (balance.sick as Record<string, unknown>)?.remaining as number || 8
-    },
-    casual: {
-      total: (balance.casual as Record<string, unknown>)?.total as number || 5,
-      used: (balance.casual as Record<string, unknown>)?.used as number || 1,
-      remaining: (balance.casual as Record<string, unknown>)?.remaining as number || 4
-    },
-    emergency: {
-      total: (balance.emergency as Record<string, unknown>)?.total as number || 3,
-      used: (balance.emergency as Record<string, unknown>)?.used as number || 0,
-      remaining: (balance.emergency as Record<string, unknown>)?.remaining as number || 3
-    }
-  };
+  const leaveBalance = balance || {};
 
   // Extract data from dashboard context - employee dashboard has a different structure
   const stats = dashboardData?.stats ? [
@@ -262,9 +251,9 @@ const EmployeeDashboard: React.FC = () => {
       percentage: 0,
     },
     {
-      title: 'Total Leave Days',
-      value: dashboardData.stats.leaveBalance?.total?.totalDays || 0,
-      description: 'Available this year',
+      title: 'Days Used',
+      value: dashboardData.stats.quickStats?.daysUsedThisYear || 0,
+      description: 'Leave days taken',
       icon: Calendar,
       color: 'bg-gradient-to-br from-blue-500 to-blue-600',
       iconColor: 'text-blue-600',
@@ -291,9 +280,9 @@ const EmployeeDashboard: React.FC = () => {
       percentage: 0,
     },
     {
-      title: 'Total Leave Days',
-      value: 38,
-      description: 'Available this year',
+      title: 'Days Used',
+      value: 8,
+      description: 'Leave days taken',
       icon: Calendar,
       color: 'bg-gradient-to-br from-blue-500 to-blue-600',
       iconColor: 'text-blue-600',
@@ -616,8 +605,62 @@ const EmployeeDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column - Quick Actions & Upcoming Holidays */}
+        {/* Right Column - Quick Actions, Performance & Upcoming Holidays */}
         <div className="space-y-6">
+          {/* Performance Metrics */}
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+                    <TrendingUp className="h-5 w-5 text-white" />
+                  </div>
+                  Performance Overview
+                </CardTitle>
+                <p className="text-slate-600 text-sm mt-2">Your current performance metrics</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 rounded-2xl bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200/50">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {dashboardData?.stats?.performance?.overall || 4.2}
+                    </div>
+                    <div className="text-xs text-slate-600">Overall Rating</div>
+                  </div>
+                  <div className="text-center p-3 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/50">
+                    <div className="text-2xl font-bold text-green-600">
+                      {dashboardData?.stats?.performance?.attendance || 95}%
+                    </div>
+                    <div className="text-xs text-slate-600">Attendance</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-slate-600">Productivity</span>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {dashboardData?.stats?.performance?.productivity || 88}%
+                    </span>
+                  </div>
+                  <Progress 
+                    value={dashboardData?.stats?.performance?.productivity || 88} 
+                    className="h-2"
+                  />
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-slate-600">Teamwork</span>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {dashboardData?.stats?.performance?.teamwork || 92}%
+                    </span>
+                  </div>
+                  <Progress 
+                    value={dashboardData?.stats?.performance?.teamwork || 92} 
+                    className="h-2"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <div className="relative group">
             <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
             <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
@@ -657,6 +700,46 @@ const EmployeeDashboard: React.FC = () => {
               </CardContent>
             </Card>
           </div>
+          {/* Team Information */}
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl">
+                    <User className="h-5 w-5 text-white" />
+                  </div>
+                  Team Information
+                </CardTitle>
+                <p className="text-slate-600 text-sm mt-2">Your team and manager details</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-slate-200/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+                      <span className="font-semibold text-slate-700">Manager</span>
+                    </div>
+                    <span className="text-sm text-slate-500">
+                      {dashboardData?.stats?.teamInfo?.teamSize || 5} members
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-slate-800">
+                      {dashboardData?.stats?.teamInfo?.managerName || 'Manager Name'}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      {dashboardData?.stats?.teamInfo?.managerEmail || 'manager@company.com'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Department: {dashboardData?.stats?.teamInfo?.department || 'Engineering'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Upcoming Holidays */}
           {upcomingHolidays.length > 0 && (
             <div className="relative group">
