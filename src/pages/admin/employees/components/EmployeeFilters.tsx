@@ -104,14 +104,14 @@ const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
       <div className="flex-1 min-w-0">
         <Label htmlFor="status-filter" className="text-sm font-medium text-slate-700 block mb-2">Status</Label>
         <Select
-          value={filters.status}
+          value={filters.status || 'all'}
           onValueChange={(value) => handleFilterChange('status', value)}
         >
           <SelectTrigger 
             id="status-filter" 
             className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full"
           >
-            <SelectValue placeholder="All Status" />
+            <SelectValue placeholder="Select Status" />
           </SelectTrigger>
           <SelectContent>
             {statusOptions.map((status) => (

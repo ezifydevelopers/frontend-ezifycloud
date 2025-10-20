@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDashboard } from '@/contexts/DashboardContext';
 import { cn } from '@/lib/utils';
 import { adminAPI, managerAPI } from '@/lib/api';
 import {
@@ -15,6 +16,8 @@ import {
   LogOut,
   Shield,
   BookOpen,
+  Calendar,
+  DollarSign,
   ChevronDown,
   ChevronRight,
   Bell,
@@ -65,6 +68,7 @@ interface NavSection {
 
 const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { user, logout } = useAuth();
+  const { dashboardData } = useDashboard();
   const location = useLocation();
   
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -76,8 +80,21 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   });
 
   console.log('🔍 Sidebar: Current sidebarStats:', sidebarStats);
+  console.log('🔍 Sidebar: Dashboard data:', dashboardData);
 
-  // Fetch sidebar stats for admin and manager users
+  // Update sidebar stats when dashboard data changes
+  useEffect(() => {
+    if (dashboardData?.stats) {
+      console.log('🔍 Sidebar: Updating stats from dashboard data:', dashboardData.stats);
+      setSidebarStats(prev => ({
+        ...prev,
+        totalEmployees: dashboardData.stats.totalEmployees || 0,
+        pendingRequests: dashboardData.stats.pendingLeaveRequests || 0,
+      }));
+    }
+  }, [dashboardData]);
+
+  // Fetch sidebar stats for admin and manager users (fallback)
   useEffect(() => {
     console.log('🔍 Sidebar: useEffect triggered, user role:', user?.role);
     const fetchSidebarStats = async () => {
@@ -88,12 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
           if (quickStatsResponse.success) {
             console.log('🔍 Sidebar: Quick stats response:', quickStatsResponse.data);
-            setSidebarStats({
+            setSidebarStats(prev => ({
+              ...prev,
               totalEmployees: quickStatsResponse.data.totalEmployees || 0,
               pendingRequests: quickStatsResponse.data.pendingRequests || 0,
-              auditLogs: 0, // Hidden functionality
-              teamMembers: 0
-            });
+            }));
             console.log('🔍 Sidebar: Updated stats:', {
               totalEmployees: quickStatsResponse.data.totalEmployees || 0,
               pendingRequests: quickStatsResponse.data.pendingRequests || 0
@@ -109,12 +125,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           const teamStatsResponse = await managerAPI.getTeamStats();
 
           if (dashboardStatsResponse.success) {
-            setSidebarStats({
+            setSidebarStats(prev => ({
+              ...prev,
               totalEmployees: 0,
               pendingRequests: dashboardStatsResponse.data.pendingApprovals || 0,
-              auditLogs: 0,
               teamMembers: dashboardStatsResponse.data.teamSize || 0
-            });
+            }));
           }
         } catch (error) {
           console.error('Error fetching manager sidebar stats:', error);
@@ -160,6 +176,35 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           href: '/admin/policies',
           description: 'Configure leave rules'
         },
+        { 
+          icon: Calendar, 
+          label: 'Holidays', 
+          href: '/admin/holidays',
+          description: 'Manage public holidays'
+        },
+        { 
+          icon: Clock, 
+          label: 'Attendance', 
+          href: '/admin/attendance',
+          description: 'Track employee attendance'
+        },
+        { 
+          icon: Building2, 
+          label: 'Office Capacity', 
+          href: '/admin/capacity',
+          description: 'View office capacity and presence'
+        },
+      ]
+    },
+    {
+      title: 'Finance',
+      items: [
+        { 
+          icon: DollarSign, 
+          label: 'Salary Management', 
+          href: '/admin/salary',
+          description: 'Manage employee salaries and deductions'
+        },
       ]
     },
     {
@@ -203,6 +248,35 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           href: '/manager/team',
           badge: sidebarStats.teamMembers > 0 ? sidebarStats.teamMembers : undefined,
           description: 'Manage team members'
+        },
+        { 
+          icon: Activity, 
+          label: 'Capacity', 
+          href: '/manager/capacity',
+          description: 'Track team availability'
+        },
+      ]
+    },
+    // Leave Management section temporarily hidden
+    // {
+    //   title: 'Leave Management',
+    //   items: [
+    //     { 
+    //       icon: Calendar, 
+    //       label: 'My Leave', 
+    //       href: '/manager/leave-management',
+    //       description: 'Request leave and track balance'
+    //     },
+    //   ]
+    // },
+    {
+      title: 'Finance',
+      items: [
+        { 
+          icon: DollarSign, 
+          label: 'Team Salary', 
+          href: '/manager/salary',
+          description: 'Manage team salaries and deductions'
         },
       ]
     },
@@ -249,14 +323,8 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       ]
     },
     {
-      title: 'Profile',
+      title: 'Settings',
       items: [
-        { 
-          icon: UserCheck, 
-          label: 'Profile', 
-          href: '/employee/profile',
-          description: 'Manage your profile'
-        },
         { 
           icon: Settings, 
           label: 'Settings', 

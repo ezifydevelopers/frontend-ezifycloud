@@ -80,10 +80,10 @@ interface TeamMember {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   department: string;
   position: string;
-  avatar: string;
+  avatar?: string;
   status: 'active' | 'on-leave' | 'offline';
   leaveBalance: {
     annual: number;
@@ -91,11 +91,10 @@ interface TeamMember {
     casual: number;
   };
   joinDate: string;
-  skills: string[];
-  currentProjects: string[];
-  manager: string;
+  skills?: string[];
+  currentProjects?: string[];
+  manager?: string;
   directReports?: number;
-  performance?: number;
   lastActive?: string;
   location?: string;
   bio?: string;
@@ -117,20 +116,33 @@ const TeamOverviewPage: React.FC = () => {
     totalMembers: 0,
     activeMembers: 0,
     onLeaveMembers: 0,
-    averagePerformance: 0,
   });
 
   const [departments, setDepartments] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Get unique status values from team members data
+  const getUniqueStatuses = useCallback(() => {
+    const statuses = new Set(teamMembers.map(member => member.status));
+    return Array.from(statuses).sort();
+  }, [teamMembers]);
 
   const fetchTeamMembers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
+      // Map frontend status to backend status
+      let backendStatus: 'active' | 'inactive' | 'all' = 'all';
+      if (filters.status === 'active') {
+        backendStatus = 'active';
+      } else if (filters.status === 'offline' || filters.status === 'on-leave') {
+        backendStatus = 'inactive';
+      }
+
       const response = await managerAPI.getTeamMembers({
         limit: 100,
-        status: filters.status as 'active' | 'inactive' | 'all',
+        status: backendStatus,
         department: filters.department === 'all' ? undefined : filters.department,
       });
 
@@ -161,7 +173,6 @@ const TeamOverviewPage: React.FC = () => {
           totalMembers: (response.data as unknown as Record<string, number>).totalMembers || 0,
           activeMembers: (response.data as unknown as Record<string, number>).activeMembers || 0,
           onLeaveMembers: (response.data as unknown as Record<string, number>).onLeaveMembers || 0,
-          averagePerformance: (response.data as unknown as Record<string, number>).averagePerformance || 0,
         });
       }
     } catch (error) {
@@ -196,7 +207,13 @@ const TeamOverviewPage: React.FC = () => {
     const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          member.position.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filters.status === 'all' || member.status === filters.status;
+    
+    // Filter by status
+    let matchesStatus = true;
+    if (filters.status !== 'all') {
+      matchesStatus = member.status === filters.status;
+    }
+    
     const matchesDepartment = filters.department === 'all' || member.department === filters.department;
     
     return matchesSearch && matchesStatus && matchesDepartment;
@@ -220,12 +237,6 @@ const TeamOverviewPage: React.FC = () => {
     }
   };
 
-  const getPerformanceColor = (performance: number) => {
-    if (typeof performance !== 'number') return 'text-gray-600';
-    if (performance >= 90) return 'text-green-600';
-    if (performance >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
 
   if (loading) {
     return (
@@ -315,26 +326,6 @@ const TeamOverviewPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500 to-purple-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Avg Performance</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">
-                    {typeof teamStats.averagePerformance === 'number' 
-                      ? `${teamStats.averagePerformance}%` 
-                      : '0%'
-                    }
-                  </p>
-                  <p className="text-xs text-muted-foreground">Team average</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Filters and Search */}
@@ -359,9 +350,14 @@ const TeamOverviewPage: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="on-leave">On Leave</SelectItem>
-                    <SelectItem value="offline">Offline</SelectItem>
+                    {getUniqueStatuses().map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status === 'active' ? 'Active' : 
+                         status === 'on-leave' ? 'On Leave' : 
+                         status === 'offline' ? 'Offline' : 
+                         String(status).charAt(0).toUpperCase() + String(status).slice(1)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select value={filters.department} onValueChange={(value) => setFilters(prev => ({ ...prev, department: value }))}>
@@ -421,14 +417,6 @@ const TeamOverviewPage: React.FC = () => {
                           {getStatusIcon(member.status)}
                           <span className="ml-1">{member.status}</span>
                         </Badge>
-                        {member.performance && typeof member.performance === 'number' && (
-                          <div className="flex items-center space-x-1">
-                            <Star className={`h-3 w-3 ${getPerformanceColor(member.performance)}`} />
-                            <span className={`text-xs font-medium ${getPerformanceColor(member.performance)}`}>
-                              {member.performance}%
-                            </span>
-                          </div>
-                        )}
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">{member.position}</p>
                       <div className="flex items-center space-x-6 text-sm text-muted-foreground">

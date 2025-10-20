@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { employeeAPI } from '@/lib/api';
 import LeaveRequestForm from '@/components/forms/LeaveRequestForm';
+import { LeaveBalanceCard } from '@/components/hoc/withLeaveBalance';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,15 +30,17 @@ import {
   Info,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useDataRefresh } from '@/hooks/useDataRefresh';
+import { APP_CONFIG } from '@/lib/config';
 
 const RequestLeave: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { refreshAfterLeaveAction } = useDataRefresh();
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
 
-  // Real data state - dynamic leave balance
-  const [leaveBalance, setLeaveBalance] = useState<{ [key: string]: { remaining: number; total: number; used: number } }>({});
+  // Leave balance is now handled by the HOC
 
   const [recentRequests, setRecentRequests] = useState([]);
 
@@ -58,76 +61,14 @@ const RequestLeave: React.FC = () => {
       console.log('🔍 RequestLeave: Auth token exists:', !!localStorage.getItem('token'));
       console.log('🔍 RequestLeave: User data:', localStorage.getItem('user'));
       
-      const balanceResponse = await employeeAPI.getLeaveBalance({ _t: timestamp } as Record<string, unknown>).catch(error => {
-        console.error('❌ Failed to fetch leave balance:', error);
-        return { success: false, data: null };
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Leave balance is now handled by the HOC
       
       const requestsResponse = await employeeAPI.getRecentRequests(10, { _t: timestamp.toString() }).catch(error => {
         console.error('❌ Failed to fetch recent requests:', error);
         return { success: false, data: [] };
       });
 
-      console.log('🔍 RequestLeave: Balance response:', balanceResponse);
       console.log('🔍 RequestLeave: Requests response:', requestsResponse);
-
-      if (balanceResponse.success && balanceResponse.data) {
-        const balance = balanceResponse.data;
-        console.log('✅ Leave Balance API Response:', balance);
-        
-        // Calculate real-time leave balance from approved requests
-        const recentRequests = requestsResponse.success ? requestsResponse.data : [];
-        const approvedRequests = recentRequests.filter(req => req.status === 'approved');
-        
-        const usedLeave: { [key: string]: number } = {};
-
-        approvedRequests.forEach(request => {
-          const leaveType = request.leaveType || request.type;
-          const days = request.days || 0;
-          
-          // Normalize leave type to lowercase for consistency
-          const normalizedType = leaveType?.toLowerCase() || '';
-          
-          if (normalizedType) {
-            usedLeave[normalizedType] = (usedLeave[normalizedType] || 0) + days;
-          }
-        });
-        
-        // Handle nested structure from API with real-time calculations
-        // The API returns dynamic leave types, so we need to handle them dynamically
-        const dynamicLeaveBalance: { [key: string]: { remaining: number; total: number; used: number } } = {};
-        
-        // Process all leave types from the API response
-        console.log('🔍 RequestLeave: Processing balance data:', balance);
-        console.log('🔍 RequestLeave: Used leave data:', usedLeave);
-        
-        Object.keys(balance).forEach(leaveType => {
-          if (leaveType !== 'total' && typeof balance[leaveType] === 'object') {
-            const leaveData = balance[leaveType];
-            const used = usedLeave[leaveType] || 0;
-            const total = leaveData?.total || 0;
-            
-            console.log(`🔍 RequestLeave: Processing ${leaveType}:`, { leaveData, used, total });
-            
-            dynamicLeaveBalance[leaveType] = {
-              remaining: total - used,
-              total: total,
-              used: used
-            };
-          }
-        });
-        
-        console.log('🔍 RequestLeave: Final dynamic leave balance:', dynamicLeaveBalance);
-        
-        // Set the dynamic leave balance
-        setLeaveBalance(dynamicLeaveBalance);
-      } else {
-        console.warn('❌ Leave balance API failed or returned no data');
-        console.warn('❌ Balance response success:', balanceResponse.success);
-        console.warn('❌ Balance response data:', balanceResponse.data);
-      }
 
       if (requestsResponse.success && requestsResponse.data) {
         console.log('✅ Recent requests data:', requestsResponse.data);
@@ -154,35 +95,119 @@ const RequestLeave: React.FC = () => {
       console.log('🔍 RequestLeave: Received data from form:', data);
       
       // Call the real API
-      const response = await employeeAPI.createLeaveRequest(data as Record<string, unknown>);
+      console.log('🔍 RequestLeave: About to call employeeAPI.createLeaveRequest');
+      const response = await employeeAPI.createLeaveRequest(data as any);
+      console.log('🔍 RequestLeave: API call completed, response received');
       
       console.log('🔍 RequestLeave: API response:', response);
+      console.log('🔍 RequestLeave: Response success:', response.success);
+      console.log('🔍 RequestLeave: Response message:', response.message);
       
       if (response.success) {
+        console.log('🔍 RequestLeave: Success - showing success toast');
         toast({
-          title: 'Leave request submitted',
-          description: 'Your leave request has been sent to your manager for approval.',
+          title: "✅ Leave Request Submitted",
+          description: "Your leave request has been sent to your manager for approval. You will receive a notification once it's reviewed.",
+          duration: 6000,
         });
+        
+        // Use the new data refresh system
+        await refreshAfterLeaveAction('create');
         
         // Refresh data after successful submission
         await fetchEmployeeData();
         
         navigate('/employee/dashboard');
       } else {
+        console.log('🔍 RequestLeave: API returned success=false, showing error toast');
+        // Show detailed error message if available
+        const errorMessage = response.message || 'Failed to submit leave request. Please try again.';
+        
         toast({
-          title: 'Error',
-          description: response.message || 'Failed to submit leave request. Please try again.',
+          title: "❌ Leave Request Failed",
+          description: `${errorMessage}\n\nPlease check your request and try again.`,
           variant: 'destructive',
+          duration: 7000,
         });
       }
     } catch (error) {
       console.error('Error submitting leave request:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.';
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      console.log('🔍 RequestLeave: Error type:', typeof error);
+      console.log('🔍 RequestLeave: Error instanceof Error:', error instanceof Error);
+      console.log('🔍 RequestLeave: Error message:', error instanceof Error ? error.message : 'Not an Error instance');
+      
+      // Extract the specific error message from the backend
+      let errorMessage = 'Failed to submit leave request. Please try again.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.log('🔍 RequestLeave: Using error message:', errorMessage);
+        
+        // Check if it's a business rules validation error
+        if (errorMessage.includes('Insufficient leave balance')) {
+          // This is a specific business rule error - show it clearly with icon
+          toast({
+            title: "⚠️ Insufficient Leave Balance",
+            description: `${errorMessage}\n\nPlease adjust your leave request to match your available balance.`,
+            variant: 'destructive',
+            duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
+          });
+        } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
+          // This is a salary deduction warning - show it as a warning, not error
+          toast({
+            title: "💰 Salary Deduction Warning",
+            description: `${errorMessage}\n\nThis leave request will result in salary deduction for excess days.`,
+            variant: 'default', // Use default variant for warnings
+            duration: 10000, // Show for 10 seconds
+          });
+        } else if (errorMessage.includes('Extended leave period') || errorMessage.includes('beyond recommended')) {
+          // This is an extended leave warning - show it as a warning, not error
+          toast({
+            title: "⏰ Extended Leave Period",
+            description: `${errorMessage}\n\nThis is an extended leave period that requires manager approval.`,
+            variant: 'default', // Use default variant for warnings
+            duration: 10000, // Show for 10 seconds
+          });
+        } else if (errorMessage.includes('Short notice period') || errorMessage.includes('insufficient notice')) {
+          // This is a short notice warning - show it as a warning, not error
+          toast({
+            title: "📅 Short Notice Period",
+            description: `${errorMessage}\n\nThis is a short notice request that requires manager approval.`,
+            variant: 'default', // Use default variant for warnings
+            duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
+          });
+        } else if (errorMessage.includes('overlaps with') || errorMessage.includes('overlapping')) {
+          // This is an overlapping request warning - show it as a warning, not error
+          toast({
+            title: "📋 Overlapping Leave Period",
+            description: `${errorMessage}\n\nPlease review overlapping periods with your manager.`,
+            variant: 'default', // Use default variant for warnings
+            duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
+          });
+        } else if (errorMessage.includes('Validation failed')) {
+          // Handle other validation errors
+          toast({
+            title: "🔍 Validation Error",
+            description: errorMessage,
+            variant: 'destructive',
+            duration: 6000,
+          });
+        } else {
+          // Generic error
+          toast({
+            title: "❌ Error",
+            description: errorMessage,
+            variant: 'destructive',
+            duration: APP_CONFIG.UI.TOAST_DURATION.MEDIUM,
+          });
+        }
+      } else {
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -214,9 +239,9 @@ const RequestLeave: React.FC = () => {
     }
   };
 
-  // Calculate real statistics from leave balance
-  const totalLeaveDays = Object.values(leaveBalance).reduce((sum, balance) => sum + balance.total, 0);
-  const usedLeaveDays = Object.values(leaveBalance).reduce((sum, balance) => sum + balance.used, 0);
+  // Calculate real statistics from recent requests (leave balance is now handled by HOC)
+  const totalLeaveDays = 0; // Will be calculated by the HOC
+  const usedLeaveDays = 0; // Will be calculated by the HOC
   const pendingRequests = recentRequests.filter(req => req.status === 'pending').length;
   const approvedRequests = recentRequests.filter(req => req.status === 'approved').length;
   const totalRequests = recentRequests.length;
@@ -224,22 +249,22 @@ const RequestLeave: React.FC = () => {
 
   const stats = [
     {
-      title: 'Total Leave Days',
-      value: totalLeaveDays,
-      description: 'Available this year',
-      icon: Calendar,
-    },
-    {
-      title: 'Used This Year',
-      value: usedLeaveDays,
-      description: 'Days taken',
-      icon: Clock,
+      title: 'Total Requests',
+      value: totalRequests,
+      description: 'All time',
+      icon: FileText,
     },
     {
       title: 'Pending Requests',
       value: pendingRequests,
-      description: 'Awaiting approval',
+      description: 'Awaiting review',
       icon: AlertCircle,
+    },
+    {
+      title: 'Approved Requests',
+      value: approvedRequests,
+      description: 'This month',
+      icon: CheckCircle,
     },
     {
       title: 'Approval Rate',
@@ -337,80 +362,8 @@ const RequestLeave: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-start">
         {/* Left Column - Leave Balance Summary and Recent Requests */}
         <div className="lg:col-span-1 flex flex-col space-y-6">
-          {/* Leave Balance Overview */}
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
-            <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
-                    <CheckCircle className="h-5 w-5 text-white" />
-                  </div>
-                  Leave Balance Overview
-                </CardTitle>
-                <p className="text-slate-600 text-sm mt-2">Track your remaining leave days across different categories</p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {Object.entries(leaveBalance).length > 0 ? (
-                  Object.entries(leaveBalance).map(([type, balance], index) => {
-                    const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
-                    const getProgressColor = (percent: number) => {
-                      if (percent >= 70) return 'bg-green-500';
-                      if (percent >= 40) return 'bg-yellow-500';
-                      return 'bg-red-500';
-                    };
-
-                    // Get color for leave type
-                    const getLeaveTypeColor = (leaveType: string) => {
-                      switch (leaveType.toLowerCase()) {
-                        case 'annual': return 'from-blue-500 to-cyan-500';
-                        case 'sick': return 'from-red-500 to-pink-500';
-                        case 'casual': return 'from-green-500 to-emerald-500';
-                        case 'maternity': return 'from-purple-500 to-pink-500';
-                        case 'paternity': return 'from-indigo-500 to-blue-500';
-                        case 'emergency': return 'from-orange-500 to-red-500';
-                        default: return 'from-gray-500 to-slate-500';
-                      }
-                    };
-
-                    return (
-                      <div
-                        key={type}
-                        className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-blue-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
-                        style={{ animationDelay: `${index * 100}ms` }}
-                      >
-                        <div className="flex justify-between items-center mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-3 h-3 rounded-full bg-gradient-to-r ${getLeaveTypeColor(type)}`}></div>
-                            <span className="font-semibold text-slate-700 capitalize">{type} Leave</span>
-                          </div>
-                          <span className="text-sm font-medium text-slate-600">
-                            {balance.used.toFixed(1)} / {balance.total} days
-                          </span>
-                        </div>
-                        <Progress 
-                          value={percentage} 
-                          className="h-2 mb-2"
-                        />
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500">Used: <span className="font-medium text-slate-700">{balance.used.toFixed(1)}</span></span>
-                          <span className="text-slate-500">Remaining: <span className="font-medium text-slate-700">{balance.remaining.toFixed(1)}</span></span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                      <CheckCircle className="h-8 w-8 text-blue-500" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">No Leave Policies</h3>
-                    <p className="text-slate-500">No leave policies are currently available.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Leave Balance Overview - Using HOC */}
+          <LeaveBalanceCard />
 
           {/* Recent Requests */}
           <div className="relative group">

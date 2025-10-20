@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDashboard } from '@/contexts/DashboardContext';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import PageHeader from '@/components/layout/PageHeader';
+import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
+import AdminDashboardStatsCards from '@/components/dashboard/AdminDashboardStatsCards';
 import {
   Users,
   Clock,
@@ -41,106 +42,32 @@ interface LeaveRequest {
   submittedAt?: string;
 }
 
-const AdminDashboard: React.FC = () => {
+const AdminDashboard: React.FC<WithDashboardDataProps> = ({ 
+  dashboardData: centralizedData, 
+  refreshDashboardData, 
+  isRefreshing 
+}) => {
   const { user } = useAuth();
-  const { dashboardData, loading, error, refreshDashboard } = useDashboard();
   const navigate = useNavigate();
 
-  const handleRefresh = () => {
-    refreshDashboard();
+  const handleRefresh = async () => {
+    await refreshDashboardData();
   };
 
-  // Stats configuration - with fallback data
-  const stats = dashboardData?.stats ? [
-    {
-      title: 'Total Employees',
-      value: dashboardData.stats.totalEmployees || 10,
-      description: 'Active employees',
-      icon: Users,
-      trend: { value: 8.3, isPositive: true },
-      color: 'bg-gradient-to-br from-blue-500 to-blue-600',
-      iconColor: 'text-blue-600',
-    },
-    {
-      title: 'Pending Requests',
-      value: dashboardData.stats.pendingLeaveRequests || 5,
-      description: 'Require attention',
-      icon: Clock,
-      variant: 'pending' as const,
-      color: 'bg-gradient-to-br from-amber-500 to-orange-500',
-      iconColor: 'text-amber-600',
-    },
-    {
-      title: 'Approved This Month',
-      value: dashboardData.stats.approvedLeaveRequests || 12,
-      description: 'Leave requests',
-      icon: CheckCircle,
-      variant: 'success' as const,
-      trend: { value: 12.5, isPositive: true },
-      color: 'bg-gradient-to-br from-green-500 to-emerald-600',
-      iconColor: 'text-green-600',
-    },
-    {
-      title: 'Rejected This Month',
-      value: dashboardData.stats.rejectedLeaveRequests || 2,
-      description: 'Leave requests',
-      icon: XCircle,
-      variant: 'destructive' as const,
-      color: 'bg-gradient-to-br from-red-500 to-rose-600',
-      iconColor: 'text-red-600',
-    },
-  ] : [
-    // Fallback data if no dashboard data
-    {
-      title: 'Total Employees',
-      value: 10,
-      description: 'Active employees',
-      icon: Users,
-      trend: { value: 8.3, isPositive: true },
-      color: 'bg-gradient-to-br from-blue-500 to-blue-600',
-      iconColor: 'text-blue-600',
-    },
-    {
-      title: 'Pending Requests',
-      value: 5,
-      description: 'Require attention',
-      icon: Clock,
-      variant: 'pending' as const,
-      color: 'bg-gradient-to-br from-amber-500 to-orange-500',
-      iconColor: 'text-amber-600',
-    },
-    {
-      title: 'Approved This Month',
-      value: 12,
-      description: 'Leave requests',
-      icon: CheckCircle,
-      variant: 'success' as const,
-      trend: { value: 12.5, isPositive: true },
-      color: 'bg-gradient-to-br from-green-500 to-emerald-600',
-      iconColor: 'text-green-600',
-    },
-    {
-      title: 'Rejected This Month',
-      value: 2,
-      description: 'Leave requests',
-      icon: XCircle,
-      variant: 'destructive' as const,
-      color: 'bg-gradient-to-br from-red-500 to-rose-600',
-      iconColor: 'text-red-600',
-    },
-  ];
+  // Use centralized dashboard data from HOC
+  console.log('🔍 AdminDashboard: Centralized data:', centralizedData);
 
   // Real data from backend - map recent activities to the expected format
-  const recentRequests = dashboardData?.leaveRequests?.map((request: LeaveRequest) => ({
-    id: request.id,
-    employee: request.employee?.name || 'Unknown Employee',
-    department: request.employee?.department || 'Engineering',
-    type: request.leaveType || 'Leave Request',
-    dates: request.startDate ? new Date(request.startDate).toLocaleDateString() : 'N/A',
-    status: request.status || 'pending',
-    submittedAt: request.submittedAt ? new Date(request.submittedAt).toLocaleString() : 'N/A',
-    avatar: request.employee?.name ? request.employee.name.charAt(0).toUpperCase() : 'U',
-    priority: 'normal' // Default priority
+  const recentRequests = centralizedData?.recentRequests?.map((request: Record<string, unknown>) => ({
+    id: String(request.id || ''),
+    employee: String(request.employeeName || 'Unknown Employee'),
+    department: String(request.department || 'Unassigned'),
+    type: String(request.leaveType || 'Leave Request'),
+    dates: request.startDate ? new Date(String(request.startDate)).toLocaleDateString() : 'N/A',
+    status: String(request.status || 'pending'),
+    submittedAt: request.submittedAt ? new Date(String(request.submittedAt)).toLocaleString() : 'N/A',
+    avatar: request.employeeName ? String(request.employeeName).charAt(0).toUpperCase() : 'U',
+    priority: String(request.priority || 'normal')
   })) || [];
   
   // Map department stats to expected format (using mock data for now)
@@ -182,38 +109,9 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading dashboard data...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Loading state is now handled by the withDashboardData HOC
 
-  if (error) {
-    return (
-      <div className="flex-1 space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <p className="text-red-600">{error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
-              className="mt-4"
-              variant="outline"
-            >
-              Retry
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Error state is now handled by the withDashboardData HOC
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/50">
@@ -230,53 +128,21 @@ const AdminDashboard: React.FC = () => {
           variant="outline" 
           size="sm" 
           onClick={handleRefresh}
-          disabled={loading}
+          disabled={isRefreshing}
           className="bg-white/50 border-white/20 hover:bg-white/80"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Refreshing...' : 'Refresh Data'}
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
         </Button>
       </PageHeader>
 
 
-      {/* Stats Overview Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-        {stats.map((stat, index) => (
-          <div key={index} className="group relative h-full">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl blur-sm group-hover:blur-md transition-all duration-300"></div>
-            <div className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-4 lg:p-6 border border-white/30 shadow-lg group-hover:shadow-xl transition-all duration-300 hover:scale-[1.02] h-full flex flex-col">
-              <div className="flex items-center justify-between flex-1">
-                <div className="space-y-1 lg:space-y-2 flex-1">
-                  <p className="text-sm font-medium text-slate-600">{stat.title}</p>
-                  <p className="text-2xl lg:text-3xl font-bold text-slate-900">{stat.value}</p>
-                  <p className="text-xs text-slate-500">{stat.description}</p>
-                </div>
-                <div className="p-2 lg:p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex-shrink-0">
-                  <stat.icon className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
-                </div>
-              </div>
-              <div className="mt-4 flex items-center">
-                {stat.trend ? (
-                  <div className="flex items-center">
-                    {stat.trend.isPositive ? (
-                      <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
-                    ) : (
-                      <ArrowDownRight className="h-4 w-4 text-red-500 mr-1" />
-                    )}
-                    <span className={`text-sm font-medium ${stat.trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                      {stat.trend.value}%
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-sm font-medium text-transparent">
-                    &nbsp;
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Stats Overview Section - Using Centralized Data */}
+      <AdminDashboardStatsCards 
+        dashboardData={centralizedData}
+        className="mb-8"
+      />
+
 
       {/* Main Content Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -289,7 +155,7 @@ const AdminDashboard: React.FC = () => {
               </div>
               <span className="text-xl">Recent Leave Requests</span>
               <Badge variant="secondary" className="ml-auto">
-                {recentRequests.length} requests
+                {centralizedData.totalRequests} requests
               </Badge>
             </CardTitle>
           </CardHeader>
@@ -438,4 +304,11 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-export default AdminDashboard;
+// Wrap the component with the centralized dashboard data HOC
+const AdminDashboardWithData = withDashboardData(AdminDashboard, {
+  autoFetch: false, // Disable auto-refresh
+  refreshInterval: 30000, // 30 seconds (not used when autoFetch is false)
+  cacheTimeout: 60000 // 1 minute
+});
+
+export default AdminDashboardWithData;

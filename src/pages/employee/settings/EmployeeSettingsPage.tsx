@@ -72,7 +72,7 @@ const EmployeeSettingsPage: React.FC = () => {
       name: user?.name || 'John Employee',
       email: user?.email || 'employee@company.com',
       phone: '+1 (555) 123-4567',
-      department: 'Engineering',
+      department: user?.department || 'Unassigned',
       position: 'Software Developer',
       bio: 'Passionate developer with expertise in modern web technologies.',
       avatar: '',

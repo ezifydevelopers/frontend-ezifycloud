@@ -7,6 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { adminAPI } from '@/lib/api';
+import ConfirmationDialog from '@/components/ui/confirmation-dialog';
+import { useConfirmation } from '@/hooks/useConfirmation';
 import { 
   BookOpen, 
   Plus, 
@@ -82,6 +84,9 @@ const LeavePoliciesPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<LeavePolicy | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Confirmation dialog hook
+  const confirmation = useConfirmation();
 
 
   const fetchPolicies = useCallback(async () => {
@@ -198,8 +203,15 @@ const LeavePoliciesPage: React.FC = () => {
   };
 
   const handleDeactivatePolicy = async (policyId: string) => {
-    // Add confirmation dialog
-    if (!confirm('Are you sure you want to deactivate this leave policy? You can reactivate it later if needed.')) {
+    const confirmed = await confirmation.confirm({
+      title: 'Deactivate Leave Policy',
+      description: 'Are you sure you want to deactivate this leave policy? You can reactivate it later if needed.',
+      confirmText: 'Deactivate',
+      cancelText: 'Cancel',
+      variant: 'warning',
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -240,8 +252,15 @@ const LeavePoliciesPage: React.FC = () => {
   };
 
   const handleDeletePolicy = async (policyId: string) => {
-    // Add confirmation dialog for permanent deletion
-    if (!confirm('Are you sure you want to permanently delete this leave policy? This action cannot be undone.')) {
+    const confirmed = await confirmation.confirm({
+      title: 'Delete Leave Policy',
+      description: 'Are you sure you want to permanently delete this leave policy? This action cannot be undone.',
+      confirmText: 'Delete Permanently',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -627,6 +646,20 @@ const LeavePoliciesPage: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        onClose={confirmation.close}
+        onConfirm={confirmation.handleConfirm}
+        title={confirmation.title}
+        description={confirmation.description}
+        confirmText={confirmation.confirmText}
+        cancelText={confirmation.cancelText}
+        variant={confirmation.variant}
+        icon={confirmation.icon}
+        loading={confirmation.loading}
+      />
         </div>
       </div>
     </div>

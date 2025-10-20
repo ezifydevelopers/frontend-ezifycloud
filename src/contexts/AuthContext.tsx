@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthContextType, LoginCredentials, SignupData } from '@/types/auth';
 import { authAPI } from '@/lib/api';
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
@@ -99,9 +99,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await authAPI.register(userData);
 
       if (data.success && data.data) {
-        setUser(data.data);
-        localStorage.setItem('user', JSON.stringify(data.data));
-        // Note: register doesn't return a token, user needs to login separately
+        // Handle both user and token from registration response
+        if (data.data.user && data.data.token) {
+          setUser(data.data.user);
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+          localStorage.setItem('token', data.data.token);
+        } else {
+          // Fallback for old API response format - this shouldn't happen with current API
+          throw new Error('Invalid API response format');
+        }
       } else {
         throw new Error(data.message || 'Registration failed');
       }

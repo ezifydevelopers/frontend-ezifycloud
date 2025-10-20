@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
 import { 
   Clock, 
   Search, 
@@ -14,7 +13,6 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  TrendingUp,
   Activity,
   ArrowUpRight,
   ArrowDownRight,
@@ -600,64 +598,6 @@ const LeaveHistoryPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="relative group">
-          <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
-          <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-3 text-xl">
-                <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-xl">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                Leave Usage by Type
-              </CardTitle>
-              <p className="text-slate-600 text-sm mt-2">Track your leave usage across different categories</p>
-            </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {Object.keys(leaveBalance).length > 0 ? (
-                Object.entries(leaveBalance).map(([type, balance]) => {
-                  const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
-                  const displayName = getLeaveTypeDisplayName(type);
-
-                  // Debug logging
-                  console.log(`🔍 Leave Usage - ${displayName}:`, {
-                    type,
-                    balance,
-                    percentage
-                  });
-
-                  return (
-                    <div key={type} className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{displayName}</span>
-                        <span className="text-slate-500">{balance.used.toFixed(1)}/{balance.total} days</span>
-                      </div>
-                      <Progress 
-                        value={percentage} 
-                        className="h-2 bg-slate-200"
-                      />
-                      <div className="text-xs text-slate-500">
-                        {Math.round(percentage)}% used
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8">
-                  <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                    <TrendingUp className="h-8 w-8 text-blue-500" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-700 mb-2">No Leave Data</h3>
-                  <p className="text-slate-500">No leave balance information available.</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        </div>
-      </div>
         </div>
       </div>
     </div>

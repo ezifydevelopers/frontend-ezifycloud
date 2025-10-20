@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDashboard } from '@/contexts/DashboardContext';
+import { managerAPI } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,9 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import PageHeader from '@/components/layout/PageHeader';
+import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
+import DashboardStatsCards from '@/components/dashboard/DashboardStatsCards';
+import TeamStatusCard from '@/components/dashboard/TeamStatusCard';
 import {
   Users,
   Clock,
@@ -33,122 +36,83 @@ import {
   Shield,
   Sparkles,
   LayoutDashboard,
+  Calendar,
 } from 'lucide-react';
 
-const ManagerDashboard: React.FC = () => {
+const ManagerDashboard: React.FC<WithDashboardDataProps> = ({ 
+  dashboardData: centralizedData, 
+  refreshDashboardData, 
+  isRefreshing 
+}) => {
   const { user } = useAuth();
-  const { dashboardData, loading, error, refreshDashboard } = useDashboard();
   const navigate = useNavigate();
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [upcomingHolidays, setUpcomingHolidays] = useState<Record<string, unknown>[]>([]);
+  const [holidaysLoading, setHolidaysLoading] = useState(true);
 
   // Handle refresh with loading state
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await refreshDashboard();
-    setIsRefreshing(false);
+    await Promise.all([
+      refreshDashboardData(),
+      fetchUpcomingHolidays()
+    ]);
   };
 
-  // Extract data from dashboard context
-  const stats = dashboardData?.stats ? {
-    teamMembers: dashboardData.stats.teamSize || 6,
-    pendingApprovals: dashboardData.stats.pendingApprovals || 3,
-    approvedThisMonth: dashboardData.stats.approvedThisMonth || 8,
-    teamCapacity: dashboardData.stats.activeTeamMembers || 6,
-  } : {
-    teamMembers: 6,
-    pendingApprovals: 3,
-    approvedThisMonth: 8,
-    teamCapacity: 6,
+  // Fetch upcoming holidays
+  const fetchUpcomingHolidays = async () => {
+    try {
+      setHolidaysLoading(true);
+      console.log('🔍 ManagerDashboard: Fetching upcoming holidays...');
+      const response = await managerAPI.getUpcomingHolidays(5);
+      console.log('📅 ManagerDashboard: Holidays response:', response);
+      if (response.success && response.data) {
+        setUpcomingHolidays(response.data as unknown as Record<string, unknown>[]);
+        console.log('✅ ManagerDashboard: Holidays fetched successfully:', response.data);
+      } else {
+        console.log('❌ ManagerDashboard: No holidays data:', response);
+        setUpcomingHolidays([]);
+      }
+    } catch (error) {
+      console.error('❌ ManagerDashboard: Error fetching upcoming holidays:', error);
+      setUpcomingHolidays([]);
+    } finally {
+      setHolidaysLoading(false);
+    }
   };
 
-  console.log('🔍 ManagerDashboard: dashboardData:', dashboardData);
-  console.log('🔍 ManagerDashboard: stats:', stats);
+  // Team capacity data is now handled by the centralized HOC
 
-  const pendingRequests = dashboardData?.leaveRequests || [];
+  // Fetch holidays on component mount
+  useEffect(() => {
+    console.log('🔄 ManagerDashboard: Component mounted, fetching holidays...');
+    fetchUpcomingHolidays();
+  }, []);
+
+  // Dashboard data is now handled by the centralized HOC
+
+  // Refresh data when component becomes visible (user navigates to dashboard)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('🔄 ManagerDashboard: Page became visible, refreshing data...');
+        refreshDashboardData();
+        fetchUpcomingHolidays();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [refreshDashboardData]);
+
+  // Use centralized dashboard data from HOC
+  const pendingRequests = centralizedData.recentRequests?.filter((req: Record<string, unknown>) => 
+    String(req.status || '').toLowerCase() === 'pending'
+  ) || [];
   const teamSchedule = []; // Mock data for now
 
-  const performanceData = {
-    responseTime: 24,
-    approvalRate: 50,
-    teamSatisfaction: 4.2,
-    productivity: 75,
-    attendance: 95,
-    engagement: 88
-  };
 
-  // Stats cards configuration
-  const statsCards = [
-    {
-      title: 'Team Members',
-      value: stats.teamMembers,
-      description: 'Active team members',
-      icon: Users,
-      color: 'from-blue-500 to-blue-600',
-      bgColor: 'bg-blue-50',
-      textColor: 'text-blue-700',
-      trend: { value: 12, isPositive: true }
-    },
-    {
-      title: 'Pending Approvals',
-      value: stats.pendingApprovals,
-      description: 'Awaiting your review',
-      icon: Clock,
-      color: 'from-amber-500 to-orange-500',
-      bgColor: 'bg-amber-50',
-      textColor: 'text-amber-700',
-      trend: { value: 3, isPositive: false }
-    },
-    {
-      title: 'Approved This Month',
-      value: stats.approvedThisMonth,
-      description: 'Successfully processed',
-      icon: CheckCircle,
-      color: 'from-green-500 to-emerald-600',
-      bgColor: 'bg-green-50',
-      textColor: 'text-green-700',
-      trend: { value: 8, isPositive: true }
-    },
-    {
-      title: 'Team Capacity',
-      value: `${stats.teamCapacity}%`,
-      description: 'Current availability',
-      icon: Target,
-      color: 'from-purple-500 to-purple-600',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-700',
-      trend: { value: 5, isPositive: true }
-    }
-  ];
+  // Loading state is now handled by the withDashboardData HOC
 
-
-  if (loading && !dashboardData) {
-  return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Error Loading Dashboard</h3>
-            <p className="text-muted-foreground mb-4">{error}</p>
-            <Button onClick={handleRefresh} disabled={isRefreshing}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Try Again
-              </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Error state is now handled by the withDashboardData HOC
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -170,35 +134,11 @@ const ManagerDashboard: React.FC = () => {
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         </PageHeader>
-        {/* Stats Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {statsCards.map((stat, index) => (
-            <Card
-              key={index}
-              className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 h-full"
-            >
-              <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
-              <CardContent className="relative p-6 h-full flex flex-col">
-                <div className="flex items-center justify-between flex-1">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">{stat.title}</p>
-                    <p className="text-2xl font-bold text-slate-900 mb-1">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground">{stat.description}</p>
-          </div>
-                  <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} shadow-lg flex-shrink-0`}>
-                    <stat.icon className="h-5 w-5 text-white" />
-        </div>
-                </div>
-                <div className="flex items-center mt-2">
-                  <span className={`text-xs font-medium ${stat.trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.trend.isPositive ? '+' : ''}{stat.trend.value}%
-                  </span>
-                  <span className="text-xs text-muted-foreground ml-1">vs last month</span>
-                </div>
-              </CardContent>
-            </Card>
-        ))}
-      </div>
+        {/* Stats Grid - Using Centralized Data */}
+        <DashboardStatsCards 
+          dashboardData={centralizedData}
+          className="mb-8"
+        />
 
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Left Column */}
@@ -217,15 +157,15 @@ const ManagerDashboard: React.FC = () => {
                     </div>
                   </div>
                   <Badge variant="secondary" className="bg-amber-100 text-amber-700">
-                    {pendingRequests.length} pending
+                    {pendingRequests.length > 0 ? pendingRequests.length : (centralizedData.recentRequests?.filter((req: Record<string, unknown>) => String(req.status || '').toLowerCase() === 'pending') || []).length} pending
                   </Badge>
                 </div>
               </CardHeader>
           <CardContent>
-              {pendingRequests.length > 0 ? (
+              {(centralizedData.pendingApprovals > 0 || pendingRequests.length > 0 || (centralizedData.recentRequests && centralizedData.recentRequests.some((req: Record<string, unknown>) => String(req.status || '').toLowerCase() === 'pending'))) ? (
                   <div className="space-y-4">
-                    {pendingRequests.slice(0, 5).map((request: unknown, index: number) => {
-                      const req = request as { id?: string; employee?: { name?: string }; leaveType?: string; status?: string };
+                    {(pendingRequests.length > 0 ? pendingRequests : centralizedData.recentRequests?.filter((req: Record<string, unknown>) => String(req.status || '').toLowerCase() === 'pending') || []).slice(0, 5).map((request: unknown, index: number) => {
+                      const req = request as { id?: string; employeeName?: string; leaveType?: string; status?: string; days?: number };
                       return (
                       <div
                         key={req.id || index}
@@ -234,12 +174,12 @@ const ManagerDashboard: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <Avatar className="h-10 w-10">
                             <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold">
-                              {req.employee?.name?.charAt(0) || 'U'}
+                              {req.employeeName?.charAt(0) || 'U'}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium text-slate-900">{req.employee?.name || 'Unknown Employee'}</p>
-                            <p className="text-sm text-muted-foreground">{req.leaveType || 'Leave Request'}</p>
+                            <p className="font-medium text-slate-900">{req.employeeName || 'Unknown Employee'}</p>
+                            <p className="text-sm text-muted-foreground">{req.leaveType || 'Leave Request'} • {req.days || 0} days</p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -279,6 +219,7 @@ const ManagerDashboard: React.FC = () => {
                     <p className="text-sm text-muted-foreground">All caught up! 🎉</p>
                 </div>
               )}
+              
           </CardContent>
         </Card>
 
@@ -307,6 +248,14 @@ const ManagerDashboard: React.FC = () => {
                   <UserCheck className="h-4 w-4 mr-2" />
                   Review Approvals
                 </Button>
+                {/* Request Leave button temporarily hidden */}
+                {/* <Button 
+                  className="w-full justify-start bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                  onClick={() => navigate('/manager/leave-management')}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Request Leave
+                </Button> */}
                 <Button 
                   variant="outline" 
                   className="w-full justify-start border-slate-200 hover:bg-slate-50"
@@ -326,44 +275,70 @@ const ManagerDashboard: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Team Status */}
-            <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg">
-                    <Activity className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Team Status</CardTitle>
-                    <p className="text-sm text-muted-foreground">Current team availability</p>
-                  </div>
+            {/* Team Status - Using Centralized Data */}
+            <TeamStatusCard 
+              dashboardData={centralizedData}
+            />
+
+          {/* Upcoming Holidays */}
+          <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
+            <CardHeader>
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg">
+                  <Calendar className="h-5 w-5 text-white" />
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-700">Available</span>
-                    <span className="text-lg font-bold text-green-600">{stats.teamCapacity}%</span>
-                  </div>
-                  <Progress value={stats.teamCapacity} className="h-2" />
-                  
-                  <Separator />
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">On Leave</span>
-                      <span className="font-medium">3 members</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Working</span>
-                      <span className="font-medium">{stats.teamMembers - 3} members</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Total Team</span>
-                      <span className="font-medium">{stats.teamMembers} members</span>
-                    </div>
-                  </div>
+                <div>
+                  <CardTitle className="text-xl">Upcoming Holidays</CardTitle>
+                  <p className="text-sm text-muted-foreground">Public holidays and company events</p>
+                </div>
               </div>
+            </CardHeader>
+            <CardContent>
+              {holidaysLoading ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Loading holidays...</p>
+                </div>
+              ) : upcomingHolidays.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingHolidays.map((holiday: Record<string, unknown>) => (
+                    <div key={holiday.id as string || Math.random().toString()} className="group p-3 rounded-2xl border border-slate-200/50 bg-gradient-to-r from-slate-50 to-emerald-50/30 hover:shadow-md hover:border-emerald-200/50 transition-all duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl shadow-md">
+                            <Calendar className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="font-semibold text-slate-800 text-sm">{holiday.name as string || 'Holiday'}</p>
+                            <p className="text-xs text-slate-600">
+                              {holiday.type as string || 'Holiday'} Holiday
+                            </p>
+                            {holiday.description && (
+                              <p className="text-xs text-slate-500">
+                                {holiday.description as string}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-slate-800 text-sm">
+                            {new Date(holiday.date as string).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(holiday.date as string).toLocaleDateString('en-US', { weekday: 'long' })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-muted-foreground">No upcoming holidays</p>
+                  <p className="text-sm text-muted-foreground">Check back later for updates</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -374,4 +349,11 @@ const ManagerDashboard: React.FC = () => {
   );
 };
 
-export default ManagerDashboard;
+// Wrap the component with the centralized dashboard data HOC
+const ManagerDashboardWithData = withDashboardData(ManagerDashboard, {
+  autoFetch: false, // Disable auto-refresh
+  refreshInterval: 30000, // 30 seconds (not used when autoFetch is false)
+  cacheTimeout: 60000 // 1 minute
+});
+
+export default ManagerDashboardWithData;

@@ -1,4 +1,4 @@
-export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'escalated';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'all';
 export type LeaveType = 'annual' | 'sick' | 'casual' | 'maternity' | 'paternity' | 'emergency';
 
 export interface LeaveRequest {

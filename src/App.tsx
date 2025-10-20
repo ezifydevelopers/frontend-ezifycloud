@@ -24,6 +24,10 @@ import EmployeeDashboard from "@/pages/employee/EmployeeDashboard";
 import EmployeesPage from "@/pages/admin/employees/EmployeesPage";
 import LeaveRequestsPage from "@/pages/admin/leave-requests/LeaveRequestsPage";
 import LeavePoliciesPage from "@/pages/admin/policies/LeavePoliciesPage";
+import HolidaysPage from "@/pages/admin/holidays/HolidaysPage";
+import AttendancePage from "@/pages/admin/attendance/AttendancePage";
+import SalaryManagementPage from "@/pages/admin/salary/SalaryManagementPage";
+import AdminCapacityPage from "@/pages/admin/capacity/AdminCapacityPage";
 // import ReportsPage from "@/pages/admin/reports/ReportsPage";
 // import AuditLogsPage from "@/pages/admin/audit-logs/AuditLogsPage";
 import SettingsPage from "@/pages/admin/settings/SettingsPage";
@@ -32,12 +36,18 @@ import SettingsPage from "@/pages/admin/settings/SettingsPage";
 import ApprovalsPage from "@/pages/manager/approvals/ApprovalsPage";
 import TeamOverviewPage from "@/pages/manager/team/TeamOverviewPage";
 import TeamMemberDetailPage from "@/pages/manager/team/TeamMemberDetailPage";
+import AddTeamMemberPage from "@/pages/manager/team/AddTeamMemberPage";
+import EditTeamMemberPage from "@/pages/manager/team/EditTeamMemberPage";
+import TeamCapacityPage from "@/pages/manager/capacity/TeamCapacityPage";
 import ManagerSettingsPage from "@/pages/manager/settings/ManagerSettingsPage";
+import ManagerRequestLeave from "@/pages/manager/RequestLeave";
+import ManagerLeaveManagement from "@/pages/manager/ManagerLeaveManagement";
+import ManagerLeaveHistoryPage from "@/pages/manager/history/LeaveHistoryPage";
+import TeamSalaryPage from "@/pages/manager/salary/TeamSalaryPage";
 
 // Employee Pages
 import RequestLeave from "@/pages/employee/RequestLeave";
 import LeaveHistoryPage from "@/pages/employee/history/LeaveHistoryPage";
-import EmployeeProfilePage from "@/pages/employee/profile/EmployeeProfilePage";
 import EmployeeSettingsPage from "@/pages/employee/settings/EmployeeSettingsPage";
 
 // Shared Pages
@@ -127,6 +137,38 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            <Route path="/admin/holidays" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <DashboardLayout>
+                  <HolidaysPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/admin/attendance" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <DashboardLayout>
+                  <AttendancePage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/admin/salary" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <DashboardLayout>
+                  <SalaryManagementPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/admin/capacity" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <DashboardLayout>
+                  <AdminCapacityPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             {/* Reports and Audit Logs routes hidden */}
             {/* <Route path="/admin/reports" element={
               <ProtectedRoute allowedRoles={['admin']}>
@@ -184,6 +226,22 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            <Route path="/manager/team/add" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <AddTeamMemberPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/team/:id/edit" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <EditTeamMemberPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/manager/team/:id" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
@@ -192,10 +250,51 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            
+            <Route path="/manager/capacity" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <TeamCapacityPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/manager/settings" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
                   <ManagerSettingsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/leave-management" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <ManagerLeaveManagement />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/salary" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <TeamSalaryPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/request-leave" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <ManagerRequestLeave />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/leave-history" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <ManagerLeaveHistoryPage />
                 </DashboardLayout>
               </ProtectedRoute>
             } />
@@ -233,13 +332,6 @@ const App = () => (
             } />
             
             
-            <Route path="/employee/profile" element={
-              <ProtectedRoute allowedRoles={['employee']}>
-                <DashboardLayout>
-                  <EmployeeProfilePage />
-                </DashboardLayout>
-              </ProtectedRoute>
-            } />
             
             <Route path="/employee/settings" element={
               <ProtectedRoute allowedRoles={['employee']}>

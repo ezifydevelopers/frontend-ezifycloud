@@ -1,43 +1,40 @@
+import { APP_CONFIG } from './config';
+
 // Department options for signup and user management
-export const DEPARTMENTS = [
-  { value: 'Engineering', label: 'Engineering' },
-  { value: 'HR', label: 'Human Resources' },
-  { value: 'Marketing', label: 'Marketing' },
-  { value: 'Sales', label: 'Sales' },
-  { value: 'Finance', label: 'Finance' },
-  { value: 'Operations', label: 'Operations' },
-  { value: 'IT', label: 'Information Technology' },
-  { value: 'Customer Support', label: 'Customer Support' },
-] as const;
+export const DEPARTMENTS = APP_CONFIG.BUSINESS.DEPARTMENTS.map(dept => ({
+  value: dept,
+  label: dept === 'HR' ? 'Human Resources' : dept === 'IT' ? 'Information Technology' : dept
+})) as const;
 
 // User roles
-export const USER_ROLES = [
-  { value: 'employee', label: 'Employee' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Administrator' },
-] as const;
+export const USER_ROLES = APP_CONFIG.BUSINESS.USER_ROLES.map(role => ({
+  value: role,
+  label: role === 'employee' ? 'Employee' : role === 'manager' ? 'Manager' : 'Administrator'
+})) as const;
 
 // Leave types
-export const LEAVE_TYPES = [
-  { value: 'annual', label: 'Annual Leave' },
-  { value: 'sick', label: 'Sick Leave' },
-  { value: 'casual', label: 'Casual Leave' },
-  { value: 'maternity', label: 'Maternity Leave' },
-  { value: 'paternity', label: 'Paternity Leave' },
-  { value: 'emergency', label: 'Emergency Leave' },
-] as const;
+export const LEAVE_TYPES = APP_CONFIG.BUSINESS.LEAVE_TYPES.map(type => ({
+  value: type,
+  label: type === 'annual' ? 'Annual Leave' : 
+         type === 'sick' ? 'Sick Leave' :
+         type === 'casual' ? 'Casual Leave' :
+         type === 'maternity' ? 'Maternity Leave' :
+         type === 'paternity' ? 'Paternity Leave' :
+         type === 'emergency' ? 'Emergency Leave' : type
+})) as const;
 
 // Leave statuses
-export const LEAVE_STATUSES = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'escalated', label: 'Escalated' },
-] as const;
+export const LEAVE_STATUSES = APP_CONFIG.BUSINESS.LEAVE_STATUSES.map(status => ({
+  value: status,
+  label: status === 'pending' ? 'Pending' :
+         status === 'approved' ? 'Approved' :
+         status === 'rejected' ? 'Rejected' :
+         status === 'escalated' ? 'Escalated' : status
+})) as const;
 
 // Password requirements
 export const PASSWORD_REQUIREMENTS = {
-  minLength: 6,
+  minLength: APP_CONFIG.SECURITY.PASSWORD.MIN_LENGTH,
   pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])/,
   message: 'Password must contain at least one lowercase letter, one uppercase letter, and one number'
 };

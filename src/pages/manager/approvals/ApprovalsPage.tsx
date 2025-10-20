@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import PageHeader from '@/components/layout/PageHeader';
-import LeaveBalanceCard from '@/components/ui/LeaveBalanceCard';
+import LeaveBalanceOverviewCard from '@/components/ui/LeaveBalanceOverviewCard';
 import { 
   FileText, 
   Search, 
@@ -72,6 +72,8 @@ import { managerAPI } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApprovalStats } from '@/types/api';
+import LeaveBalanceModal from '@/components/admin/LeaveBalanceModal';
+import { useDataRefresh } from '@/hooks/useDataRefresh';
 
 interface LeaveRequest {
   id: string;
@@ -102,11 +104,12 @@ const ApprovalsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { refreshAfterLeaveAction } = useDataRefresh();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
-    status: 'pending',
+    status: 'all',
     leaveType: 'all',
     priority: 'all',
   });
@@ -114,65 +117,71 @@ const ApprovalsPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [individualRequest, setIndividualRequest] = useState<LeaveRequest | null>(null);
-  const [leaveBalances, setLeaveBalances] = useState<Record<string, any>>({});
+  const [leaveBalances, setLeaveBalances] = useState<Record<string, unknown>>({});
   const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
+  const [showLeaveBalanceModal, setShowLeaveBalanceModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<{id: string, name: string} | null>(null);
 
-  // State for statistics
-  const [stats, setStats] = useState({
-    pendingRequests: 0,
-    approvedToday: 0,
-    highPriority: 0,
-    teamMembers: 0,
-  });
 
   useEffect(() => {
     if (id) {
       fetchIndividualApproval(id);
     } else {
       fetchApprovals();
-      fetchStats();
     }
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Watch for filter changes and refresh data
+  useEffect(() => {
+    if (!id) {
+      fetchApprovals();
+    }
+  }, [filters, searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchApprovals = async () => {
     try {
       setLoading(true);
-      const response = await managerAPI.getLeaveApprovals({
-        status: filters.status === 'all' ? undefined : filters.status as 'pending' | 'approved' | 'rejected',
+      console.log('🔍 ApprovalsPage: Fetching approvals with filters:', filters);
+      
+      const requestParams = {
+        status: filters.status as 'pending' | 'approved' | 'rejected' | 'all',
         limit: 50,
+      };
+      
+      console.log('🔍 ApprovalsPage: Request parameters:', requestParams);
+      
+      // Debug URLSearchParams conversion
+      const urlParams = new URLSearchParams({
+        status: requestParams.status,
+        limit: requestParams.limit.toString()
       });
+      console.log('🔍 ApprovalsPage: URLSearchParams:', urlParams.toString());
+      
+      const response = await managerAPI.getLeaveApprovals(requestParams);
+
+      console.log('🔍 ApprovalsPage: API response:', response);
 
       if (response.success && response.data) {
         const requests = Array.isArray(response.data) ? response.data : response.data.data || [];
         setLeaveRequests(requests as LeaveRequest[]);
+        console.log('🔍 ApprovalsPage: Loaded leave requests:', requests.length, requests);
+      } else {
+        console.log('❌ ApprovalsPage: No data in response:', response);
+        setLeaveRequests([]);
       }
     } catch (error) {
-      console.error('Error fetching approvals:', error);
+      console.error('❌ ApprovalsPage: Error fetching approvals:', error);
       toast({
         title: 'Error',
         description: 'Failed to fetch leave approvals',
         variant: 'destructive',
       });
+      setLeaveRequests([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchStats = async () => {
-    try {
-      const response = await managerAPI.getApprovalStats();
-      if (response.success && response.data) {
-        setStats({
-          pendingRequests: (response.data as unknown as Record<string, number>).pendingRequests || 0,
-          approvedToday: (response.data as unknown as Record<string, number>).approvedToday || 0,
-          highPriority: (response.data as unknown as Record<string, number>).highPriority || 0,
-          teamMembers: (response.data as unknown as Record<string, number>).teamMembers || 0,
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
 
   const fetchIndividualApproval = async (requestId: string) => {
     try {
@@ -180,7 +189,14 @@ const ApprovalsPage: React.FC = () => {
       const response = await managerAPI.getLeaveApprovalById(requestId);
       
       if (response.success && response.data) {
-        setIndividualRequest(response.data as unknown as LeaveRequest);
+        const request = response.data as unknown as LeaveRequest;
+        setIndividualRequest(request);
+        
+        // Automatically fetch leave balance for the employee
+        if (request.employee?.id) {
+          console.log('🔍 ApprovalsPage: Auto-fetching leave balance for employee:', request.employee.id);
+          await fetchLeaveBalance(request.employee.id);
+        }
       } else {
         toast({
           title: 'Error',
@@ -204,7 +220,7 @@ const ApprovalsPage: React.FC = () => {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchApprovals(), fetchStats()]);
+    await fetchApprovals();
     setIsRefreshing(false);
   };
 
@@ -227,6 +243,11 @@ const ApprovalsPage: React.FC = () => {
     }
   };
 
+  const openLeaveBalanceModal = (employee: {id: string, name: string}) => {
+    setSelectedEmployee(employee);
+    setShowLeaveBalanceModal(true);
+  };
+
   const handleApprove = async (requestId: string) => {
     try {
       setIsProcessing(true);
@@ -241,6 +262,11 @@ const ApprovalsPage: React.FC = () => {
           title: 'Request Approved',
           description: 'Leave request has been approved successfully',
         });
+        
+        // Use the new data refresh system
+        await refreshAfterLeaveAction('approve');
+        
+        // Also refresh local data
         await handleRefresh();
       } else {
         throw new Error(response.message || 'Failed to approve request');
@@ -271,6 +297,11 @@ const ApprovalsPage: React.FC = () => {
           title: 'Request Rejected',
           description: 'Leave request has been rejected',
         });
+        
+        // Use the new data refresh system
+        await refreshAfterLeaveAction('reject');
+        
+        // Also refresh local data
         await handleRefresh();
       } else {
         throw new Error(response.message || 'Failed to reject request');
@@ -442,16 +473,48 @@ const ApprovalsPage: React.FC = () => {
 
               {/* Leave Balance Section */}
               <div className="mt-6">
-                <h4 className="text-lg font-semibold text-slate-900 mb-4">Employee Leave Balance</h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-semibold text-slate-900">Employee Leave Balance</h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openLeaveBalanceModal({id: individualRequest.employee.id, name: individualRequest.employee.name})}
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Details
+                  </Button>
+                </div>
                 {loadingBalances[individualRequest.employee.id] ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
                 ) : leaveBalances[individualRequest.employee.id] ? (
-                  <LeaveBalanceCard 
-                    leaveBalance={leaveBalances[individualRequest.employee.id]} 
-                    showTitle={false}
-                    compact={false}
+                  <LeaveBalanceOverviewCard 
+                    leaveBalance={{
+                      annual: {
+                        total: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.annual?.total) || 0,
+                        used: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.annual?.used) || 0,
+                        remaining: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.annual?.remaining) || 0
+                      },
+                      sick: {
+                        total: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.sick?.total) || 0,
+                        used: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.sick?.used) || 0,
+                        remaining: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.sick?.remaining) || 0
+                      },
+                      casual: {
+                        total: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.casual?.total) || 0,
+                        used: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.casual?.used) || 0,
+                        remaining: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.casual?.remaining) || 0
+                      },
+                      emergency: {
+                        total: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.emergency?.total) || 0,
+                        used: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.emergency?.used) || 0,
+                        remaining: ((leaveBalances[individualRequest.employee.id] as any)?.leaveBalance?.emergency?.remaining) || 0
+                      }
+                    }}
+                    title=""
+                    description=""
                   />
                 ) : (
                   <div className="flex items-center justify-center py-8">
@@ -517,72 +580,6 @@ const ApprovalsPage: React.FC = () => {
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         </PageHeader>
-        {/* Stats Cards */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Pending Requests</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{stats.pendingRequests}</p>
-                  <p className="text-xs text-muted-foreground">Awaiting review</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                  <Clock className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-emerald-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Approved Today</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{stats.approvedToday}</p>
-                  <p className="text-xs text-muted-foreground">Successfully processed</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
-                  <CheckCircle className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-red-500 to-pink-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">High Priority</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{stats.highPriority}</p>
-                  <p className="text-xs text-muted-foreground">Urgent attention needed</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-red-500 to-pink-600 shadow-lg">
-                  <AlertTriangle className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500 to-purple-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Team Members</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{stats.teamMembers}</p>
-                  <p className="text-xs text-muted-foreground">Total team size</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
-                  <Users className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Enhanced Filters and Search */}
         <div className="relative group">
@@ -633,14 +630,31 @@ const ApprovalsPage: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <Label className="text-sm font-medium text-slate-700 block mb-2">Leave Type</Label>
                         <Select value={filters.leaveType} onValueChange={(value) => setFilters(prev => ({ ...prev, leaveType: value }))}>
-                          <SelectTrigger className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full">
+                          <SelectTrigger className="h-11 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20 w-full transition-all duration-200 hover:border-slate-300 shadow-sm">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Types</SelectItem>
-                            <SelectItem value="sick">Sick Leave</SelectItem>
-                            <SelectItem value="vacation">Vacation</SelectItem>
-                            <SelectItem value="personal">Personal</SelectItem>
+                          <SelectContent className="bg-white border border-slate-200 rounded-md shadow-lg z-50 p-1 min-w-[160px]">
+                            <SelectItem value="all" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">All Types</span>
+                            </SelectItem>
+                            <SelectItem value="annual" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Annual Leave</span>
+                            </SelectItem>
+                            <SelectItem value="sick" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Sick Leave</span>
+                            </SelectItem>
+                            <SelectItem value="casual" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Casual Leave</span>
+                            </SelectItem>
+                            <SelectItem value="emergency" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Emergency Leave</span>
+                            </SelectItem>
+                            <SelectItem value="maternity" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Maternity Leave</span>
+                            </SelectItem>
+                            <SelectItem value="paternity" className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-2.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[state=checked]:bg-blue-100 data-[state=checked]:text-blue-800 data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+                              <span className="font-medium">Paternity Leave</span>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -727,18 +741,41 @@ const ApprovalsPage: React.FC = () => {
                               <span className="text-xs text-muted-foreground">Loading balance...</span>
                             </div>
                           ) : leaveBalances[request.employee.id] ? (
-                            <div className="text-xs text-muted-foreground">
-                              Balance: {leaveBalances[request.employee.id].annual}A / {leaveBalances[request.employee.id].sick}S / {leaveBalances[request.employee.id].casual}C
+                            <div className="flex items-center space-x-2">
+                              <div className="text-xs text-muted-foreground">
+                                Balance: {Object.entries(leaveBalances[request.employee.id] || {})
+                                  .filter(([key]) => key !== 'total')
+                                  .map(([type, balance]: [string, any]) => `${balance?.remaining || 0}${type.charAt(0).toUpperCase()}`)
+                                  .join(' / ')}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openLeaveBalanceModal({id: request.employee.id, name: request.employee.name})}
+                                className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                View Details
+                              </Button>
                             </div>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => fetchLeaveBalance(request.employee.id)}
-                              className="h-6 px-2 text-xs"
-                            >
-                              View Balance
-                            </Button>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => fetchLeaveBalance(request.employee.id)}
+                                className="h-6 px-2 text-xs"
+                              >
+                                View Balance
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openLeaveBalanceModal({id: request.employee.id, name: request.employee.name})}
+                                className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                View Details
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -917,6 +954,18 @@ const ApprovalsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Leave Balance Modal */}
+      <LeaveBalanceModal
+        isOpen={showLeaveBalanceModal}
+        onClose={() => {
+          setShowLeaveBalanceModal(false);
+          setSelectedEmployee(null);
+        }}
+        userId={selectedEmployee?.id}
+        userName={selectedEmployee?.name}
+        fetchLeaveBalanceFn={managerAPI.getTeamMemberLeaveBalance}
+      />
     </div>
   );
 };

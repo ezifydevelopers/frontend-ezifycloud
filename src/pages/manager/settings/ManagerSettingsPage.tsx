@@ -100,7 +100,7 @@ const ManagerSettingsPage: React.FC = () => {
           name: 'John Manager',
           email: 'john.manager@ezify.com',
           phone: '+1 (555) 123-4567',
-          department: 'Engineering',
+          department: user?.department || 'Unassigned',
           bio: 'Experienced engineering manager with 8+ years in team leadership.',
           createdAt: new Date('2023-01-15'),
           updatedAt: new Date(),
@@ -142,22 +142,28 @@ const ManagerSettingsPage: React.FC = () => {
   };
 
   const handleInputChange = (field: keyof ProfileData, value: string) => {
-    setSettings(prev => ({
-      ...prev,
-      profile: {
+    setSettings(prev => {
+      const updatedProfile = {
         ...prev.profile,
         [field]: value
+      };
+      
+      // Check if there are unsaved changes using the updated profile
+      let hasChanges = false;
+      if (originalProfile) {
+        hasChanges = Object.keys(originalProfile).some(key => {
+          const typedKey = key as keyof ProfileData;
+          return originalProfile[typedKey] !== updatedProfile[typedKey];
+        });
       }
-    }));
-
-    // Check if there are unsaved changes
-    if (originalProfile) {
-      const hasChanges = Object.keys(originalProfile).some(key => {
-        const typedKey = key as keyof ProfileData;
-        return originalProfile[typedKey] !== settings.profile[typedKey];
-      });
+      
       setHasUnsavedChanges(hasChanges);
-    }
+      
+      return {
+        ...prev,
+        profile: updatedProfile
+      };
+    });
   };
 
   const handleSave = async (section: string) => {
@@ -212,36 +218,6 @@ const ManagerSettingsPage: React.FC = () => {
     }
   };
 
-  const stats = [
-    {
-      title: 'Team Members',
-      value: '12',
-      description: 'Active team members',
-      icon: User,
-      color: 'bg-blue-500',
-    },
-    {
-      title: 'Pending Approvals',
-      value: '5',
-      description: 'Awaiting review',
-      icon: Clock,
-      color: 'bg-amber-500',
-    },
-    {
-      title: 'Department',
-      value: settings.profile.department || 'Engineering',
-      description: 'Your department',
-      icon: Building2,
-      color: 'bg-green-500',
-    },
-    {
-      title: 'Account Status',
-      value: 'Active',
-      description: 'Account is active',
-      icon: CheckCircle,
-      color: 'bg-purple-500',
-    }
-  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -254,29 +230,6 @@ const ManagerSettingsPage: React.FC = () => {
           iconColor="from-green-600 to-blue-600"
         />
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {stats.map((stat, index) => (
-            <div
-              key={index}
-              className="group relative overflow-hidden rounded-xl bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-            >
-              <div className={`absolute inset-0 ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
-              <div className="relative p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-xl font-bold mt-1">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
-                  </div>
-                  <div className={`p-2 rounded-lg ${stat.color} shadow-lg`}>
-                    <stat.icon className={`h-4 w-4 text-white`} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
 
         {/* Settings Tabs */}
         <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">

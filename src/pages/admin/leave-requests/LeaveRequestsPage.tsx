@@ -54,6 +54,8 @@ import { triggerDashboardRefresh } from '@/contexts/DashboardContext';
 import { toast } from '@/hooks/use-toast';
 import LeaveRequestFilters from './components/LeaveRequestFilters';
 import LeaveRequestDetails from './components/LeaveRequestDetails';
+import LeaveBalanceModal from '@/components/admin/LeaveBalanceModal';
+import { useDataRefresh } from '@/hooks/useDataRefresh';
 
 interface LeaveRequest {
   id: string;
@@ -77,6 +79,7 @@ interface LeaveRequest {
 }
 
 const LeaveRequestsPage: React.FC = () => {
+  const { refreshAfterLeaveAction } = useDataRefresh();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -90,6 +93,8 @@ const LeaveRequestsPage: React.FC = () => {
   const scrollPositionRef = useRef<number>(0);
   const [leaveBalances, setLeaveBalances] = useState<Record<string, any>>({});
   const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
+  const [showLeaveBalanceModal, setShowLeaveBalanceModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<{id: string, name: string} | null>(null);
 
   useEffect(() => {
     fetchLeaveRequests();
@@ -175,6 +180,11 @@ const LeaveRequestsPage: React.FC = () => {
     }
   };
 
+  const openLeaveBalanceModal = (employee: {id: string, name: string}) => {
+    setSelectedEmployee(employee);
+    setShowLeaveBalanceModal(true);
+  };
+
   const handleApprove = async (requestId: string, event?: React.MouseEvent) => {
     // Prevent default behavior and page scrolling
     if (event) {
@@ -198,6 +208,10 @@ const LeaveRequestsPage: React.FC = () => {
           title: 'Request approved',
           description: 'Leave request has been approved successfully',
         });
+        
+        // Use the new data refresh system
+        await refreshAfterLeaveAction('approve');
+        
         // Refresh the data to show updated status while preserving scroll position
         await fetchLeaveRequests(true);
         // Trigger dashboard refresh to update stats
@@ -241,6 +255,10 @@ const LeaveRequestsPage: React.FC = () => {
           title: 'Request rejected',
           description: 'Leave request has been rejected',
         });
+        
+        // Use the new data refresh system
+        await refreshAfterLeaveAction('reject');
+        
         // Refresh the data to show updated status while preserving scroll position
         await fetchLeaveRequests(true);
         // Trigger dashboard refresh to update stats
@@ -502,19 +520,29 @@ const LeaveRequestsPage: React.FC = () => {
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                             </div>
                           ) : leaveBalances[request.employee.id] ? (
-                            <div className="text-xs text-slate-600">
-                              <div>A: {leaveBalances[request.employee.id].annual}</div>
-                              <div>S: {leaveBalances[request.employee.id].sick}</div>
-                              <div>C: {leaveBalances[request.employee.id].casual}</div>
+                            <div className="space-y-1">
+                              <div className="text-xs text-slate-600">
+                                <div>A: {(leaveBalances[request.employee.id] as any)?.leaveBalance?.annual?.remaining || 0}</div>
+                                <div>S: {(leaveBalances[request.employee.id] as any)?.leaveBalance?.sick?.remaining || 0}</div>
+                                <div>C: {(leaveBalances[request.employee.id] as any)?.leaveBalance?.casual?.remaining || 0}</div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openLeaveBalanceModal({id: request.employee.id, name: request.employee.name})}
+                                className="text-xs h-5 px-2 w-full"
+                              >
+                                View Details
+                              </Button>
                             </div>
                           ) : (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => fetchLeaveBalance(request.employee.id)}
+                              onClick={() => openLeaveBalanceModal({id: request.employee.id, name: request.employee.name})}
                               className="text-xs h-6 px-2"
                             >
-                              View
+                              View Balance
                             </Button>
                           )}
                         </div>
@@ -589,6 +617,17 @@ const LeaveRequestsPage: React.FC = () => {
           }}
         />
       )}
+
+      {/* Leave Balance Modal */}
+      <LeaveBalanceModal
+        isOpen={showLeaveBalanceModal}
+        onClose={() => {
+          setShowLeaveBalanceModal(false);
+          setSelectedEmployee(null);
+        }}
+        userId={selectedEmployee?.id}
+        userName={selectedEmployee?.name}
+      />
         </div>
       </div>
     </div>

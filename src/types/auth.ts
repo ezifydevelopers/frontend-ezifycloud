@@ -8,6 +8,12 @@ export interface User {
   department?: string;
   managerId?: string;
   profilePicture?: string;
+  isActive?: boolean;
+  phone?: string;
+  bio?: string;
+  address?: string;
+  emergencyContact?: string;
+  emergencyPhone?: string;
   createdAt: Date;
   updatedAt: Date;
 }

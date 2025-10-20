@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,11 +27,6 @@ import {
   Edit,
   Save,
   Shield,
-  Award as AwardIcon,
-  Trophy,
-  BookOpen,
-  Briefcase,
-  GraduationCap,
   RefreshCw,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -51,9 +46,7 @@ interface EmployeeProfile {
   joinDate: string;
   avatar: string;
   bio: string;
-  skills: string[];
-  certifications: string[];
-  achievements: string[];
+  emergencyContact: string;
   leaveBalance: {
     annual: number;
     sick: number;
@@ -73,16 +66,8 @@ const EmployeeProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<EmployeeProfile>>({});
-  const [newSkill, setNewSkill] = useState('');
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  useEffect(() => {
-    if (user !== undefined) {
-      fetchProfile();
-    }
-  }, [user]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -104,19 +89,21 @@ const EmployeeProfilePage: React.FC = () => {
         console.log('✅ Profile: Setting profile data:', response.data);
         
         // Transform backend data to match frontend interface
+        const data = response.data as Record<string, unknown>;
         const profileData: EmployeeProfile = {
-          id: response.data.id,
-          name: response.data.name,
-          email: response.data.email,
-          phone: response.data.phone || '',
-          address: typeof response.data.address === 'string' ? response.data.address : (response.data.address ? JSON.stringify(response.data.address) : ''),
-          department: response.data.department || 'Unassigned',
+          id: data.id as string,
+          name: data.name as string,
+          email: data.email as string,
+          phone: (data.phone as string) || '',
+          address: typeof data.address === 'string' ? data.address : (data.address ? JSON.stringify(data.address) : ''),
+          department: (data.department as string) || 'Unassigned',
           position: 'Employee', // Default position
-          manager: response.data.managerName || 'No Manager',
-          joinDate: response.data.joinDate || response.data.createdAt,
-          avatar: response.data.avatar || response.data.name.split(' ').map((n: string) => n[0]).join(''),
-          bio: response.data.bio || 'No bio available',
-          skills: response.data.skills || [],
+          manager: (data.managerName as string) || 'No Manager',
+          joinDate: (data.joinDate as string) || (data.createdAt as string),
+          avatar: (data.avatar as string) || (data.name as string).split(' ').map((n: string) => n[0]).join(''),
+          bio: (data.bio as string) || 'No bio available',
+          skills: (data.skills as string[]) || [],
+          emergencyContact: (data.emergencyContact as string) || '',
           certifications: [], // Not available in backend yet
           achievements: [], // Not available in backend yet
           leaveBalance: {
@@ -128,14 +115,14 @@ const EmployeeProfilePage: React.FC = () => {
             {
               id: '1',
               action: 'Profile updated',
-              date: response.data.updatedAt || new Date().toISOString(),
+              date: (data.updatedAt as string) || new Date().toISOString(),
               type: 'profile',
             },
           ],
         };
         
         setProfile(profileData);
-        setEditData(profileData);
+        setEditData(profileData as Partial<EmployeeProfile>);
       } else {
         console.warn('❌ Profile: API failed or returned no data');
         setProfile(null);
@@ -151,8 +138,13 @@ const EmployeeProfilePage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
+  useEffect(() => {
+    if (user !== undefined) {
+      fetchProfile();
+    }
+  }, [user, fetchProfile]);
 
   const handleSave = async () => {
     try {
@@ -164,7 +156,6 @@ const EmployeeProfilePage: React.FC = () => {
         name: editData.name,
         phone: editData.phone,
         bio: editData.bio,
-        skills: editData.skills,
         address: editData.address,
         emergencyContact: editData.emergencyContact,
       });
@@ -173,19 +164,21 @@ const EmployeeProfilePage: React.FC = () => {
       
       if (response.success && response.data) {
         // Transform updated data to match frontend interface
+        const data = response.data as Record<string, unknown>;
         const updatedProfile: EmployeeProfile = {
-          id: response.data.id,
-          name: response.data.name,
-          email: response.data.email,
-          phone: response.data.phone || '',
-          address: typeof response.data.address === 'string' ? response.data.address : (response.data.address ? JSON.stringify(response.data.address) : ''),
-          department: response.data.department || 'Unassigned',
+          id: data.id as string,
+          name: data.name as string,
+          email: data.email as string,
+          phone: (data.phone as string) || '',
+          address: typeof data.address === 'string' ? data.address : (data.address ? JSON.stringify(data.address) : ''),
+          department: (data.department as string) || 'Unassigned',
           position: 'Employee',
-          manager: response.data.managerName || 'No Manager',
-          joinDate: response.data.joinDate || response.data.createdAt,
-          avatar: response.data.avatar || response.data.name.split(' ').map((n: string) => n[0]).join(''),
-          bio: response.data.bio || 'No bio available',
-          skills: response.data.skills || [],
+          manager: (data.managerName as string) || 'No Manager',
+          joinDate: (data.joinDate as string) || (data.createdAt as string),
+          avatar: (data.avatar as string) || (data.name as string).split(' ').map((n: string) => n[0]).join(''),
+          bio: (data.bio as string) || 'No bio available',
+          skills: (data.skills as string[]) || [],
+          emergencyContact: (data.emergencyContact as string) || '',
           certifications: profile?.certifications || [],
           achievements: profile?.achievements || [],
           leaveBalance: profile?.leaveBalance || { annual: 25, sick: 10, casual: 8 },
@@ -231,34 +224,6 @@ const EmployeeProfilePage: React.FC = () => {
     }));
   };
 
-  const handleAddSkill = () => {
-    if (newSkill.trim() && profile) {
-      const updatedSkills = [...profile.skills, newSkill.trim()];
-      setProfile(prev => prev ? { ...prev, skills: updatedSkills } : null);
-      setEditData(prev => ({ ...prev, skills: updatedSkills }));
-      setNewSkill('');
-      setHasUnsavedChanges(true);
-      
-      toast({
-        title: 'Skill added',
-        description: `${newSkill.trim()} has been added to your skills. Don't forget to save!`,
-      });
-    }
-  };
-
-  const handleRemoveSkill = (skillToRemove: string) => {
-    if (profile) {
-      const updatedSkills = profile.skills.filter(skill => skill !== skillToRemove);
-      setProfile(prev => prev ? { ...prev, skills: updatedSkills } : null);
-      setEditData(prev => ({ ...prev, skills: updatedSkills }));
-      setHasUnsavedChanges(true);
-      
-      toast({
-        title: 'Skill removed',
-        description: `${skillToRemove} has been removed from your skills. Don't forget to save!`,
-      });
-    }
-  };
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -375,9 +340,8 @@ const EmployeeProfilePage: React.FC = () => {
         <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
           <CardContent className="p-6">
             <Tabs defaultValue="overview" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 rounded-2xl p-1">
+              <TabsList className="grid w-full grid-cols-1 bg-slate-100/50 rounded-2xl p-1">
                 <TabsTrigger value="overview" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Overview</TabsTrigger>
-                <TabsTrigger value="skills" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Skills & Certifications</TabsTrigger>
               </TabsList>
 
             {/* Overview Tab */}
@@ -479,154 +443,6 @@ const EmployeeProfilePage: React.FC = () => {
               </div>
             </TabsContent>
 
-            {/* Skills & Certifications Tab */}
-            <TabsContent value="skills">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl">
-                      <BookOpen className="h-5 w-5 text-white" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-slate-900">Skills & Certifications</h3>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsEditing(!isEditing)}
-                      className="hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors duration-200"
-                    >
-                      <Edit className="mr-2 h-4 w-4" />
-                      {isEditing ? 'Cancel' : 'Edit Skills'}
-                    </Button>
-                    {isEditing && (
-                      <Button
-                        onClick={handleSave}
-                        disabled={loading}
-                        className={`bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200 ${hasUnsavedChanges ? 'ring-2 ring-orange-400' : ''}`}
-                      >
-                        <Save className="mr-2 h-4 w-4" />
-                        {hasUnsavedChanges ? 'Save Skills*' : 'Save Skills'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                
-                {hasUnsavedChanges && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-5 w-5 text-orange-600 mr-3" />
-                      <p className="text-orange-800 font-medium">
-                        You have unsaved changes. Click "Save Skills" to persist your changes to the database.
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div>
-                    <h4 className="font-medium text-slate-900 mb-4">Technical Skills</h4>
-                    
-                    {/* Add Skill Input */}
-                    {isEditing && (
-                      <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-200/50">
-                        <div className="flex gap-3">
-                          <Input
-                            placeholder="Add a new skill..."
-                            value={newSkill}
-                            onChange={(e) => setNewSkill(e.target.value)}
-                            className="flex-1 bg-white/80 border-blue-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleAddSkill();
-                              }
-                            }}
-                          />
-                          <Button
-                            onClick={handleAddSkill}
-                            disabled={!newSkill.trim()}
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                          >
-                            Add
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="space-y-3">
-                      {profile.skills.map((skill, index) => (
-                        <div
-                          key={skill}
-                          className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
-                          style={{ animationDelay: `${index * 100}ms` }}
-                        >
-                          <span className="font-medium text-slate-900">{skill}</span>
-                          <div className="flex items-center gap-3">
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 rounded-lg px-3 py-1">
-                              Expert
-                            </Badge>
-                            {isEditing && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveSkill(skill)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      
-                      {profile.skills.length === 0 && (
-                        <div className="text-center py-12">
-                          <div className="p-4 bg-slate-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                            <BookOpen className="h-10 w-10 text-slate-400" />
-                          </div>
-                          <h3 className="text-lg font-semibold text-slate-900 mb-2">No Skills Added</h3>
-                          <p className="text-slate-500">Add your technical skills to showcase your expertise.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-slate-900 mb-4">Certifications</h4>
-                    <div className="space-y-3">
-                      {profile.certifications.map((cert, index) => (
-                        <div
-                          key={cert}
-                          className="flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
-                          style={{ animationDelay: `${index * 100}ms` }}
-                        >
-                          <div className="p-2 bg-green-100 rounded-xl">
-                            <Shield className="h-5 w-5 text-green-600" />
-                          </div>
-                          <span className="font-medium text-slate-900">{cert}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-medium text-slate-900 mb-4">Achievements</h4>
-                  <div className="space-y-3">
-                    {profile.achievements.map((achievement, index) => (
-                      <div
-                        key={achievement}
-                        className="flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-r from-white to-slate-50/50 border border-slate-200/50 hover:shadow-md transition-all duration-200"
-                        style={{ animationDelay: `${index * 100}ms` }}
-                      >
-                        <div className="p-2 bg-yellow-100 rounded-xl">
-                          <Trophy className="h-5 w-5 text-yellow-600" />
-                        </div>
-                        <span className="font-medium text-slate-900">{achievement}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
 
 
           </Tabs>

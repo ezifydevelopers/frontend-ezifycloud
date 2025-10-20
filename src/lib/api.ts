@@ -1,5 +1,6 @@
 // API utility functions for authenticated requests
 import { User } from '../types/auth';
+
 import { LeaveRequest, LeaveBalance, LeavePolicy, LeaveType, LeaveStatus, AuditLog } from '../types/leave';
 import {
   ApiResponse,
@@ -43,6 +44,7 @@ import {
   SecuritySettings,
   UpdateSecuritySettingsRequest,
   TeamMemberParams,
+  AddTeamMemberRequest,
   UpdateTeamMemberRequest,
   TeamStats,
   TeamMemberPerformance,
@@ -72,10 +74,21 @@ import {
   UpdatePrivacySettingsRequest,
   PerformanceGoal,
   Achievement,
-  PaginatedResponse
+  PaginatedResponse,
+  Holiday,
+  CreateHolidayRequest,
+  UpdateHolidayRequest,
+  HolidayStats,
+  EmployeeSalary,
+  MonthlySalary,
+  SalaryDeduction,
+  SalaryCalculation,
+  SalaryStatistics
 } from '../types/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { APP_CONFIG } from './config';
+
+const API_BASE_URL = APP_CONFIG.API_BASE_URL;
 
 // Get auth token from localStorage
 const getAuthToken = (): string | null => {
@@ -139,6 +152,13 @@ export const apiRequest = async <T = unknown>(
         }
         
         const errorData = await response.json().catch(() => ({}));
+        
+        // For validation errors, include the details
+        if (response.status === 400 && errorData.details) {
+          const validationDetails = errorData.details.map((d: {field: string, message: string}) => `${d.field}: ${d.message}`).join(', ');
+          throw new Error(`${errorData.message || 'Validation failed'} - ${validationDetails}`);
+        }
+        
         throw new Error(errorData.message || errorData.error || `HTTP error! status: ${response.status}`);
       }
 
@@ -165,7 +185,7 @@ export const authAPI = {
       body: JSON.stringify({ email, password }),
     }),
   
-  register: (userData: RegisterRequest): Promise<ApiResponse<User>> =>
+  register: (userData: RegisterRequest): Promise<ApiResponse<LoginResponse>> =>
     apiRequest('/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
@@ -284,8 +304,37 @@ export const adminAPI = {
       method: 'PATCH',
       body: JSON.stringify({ isActive }),
     }),
+  bulkUpdateEmployeeStatus: (employeeIds: string[], isActive: boolean): Promise<ApiResponse<{ updated: number; failed: number }>> =>
+    apiRequest('/admin/employees/bulk-update-status', {
+      method: 'PATCH',
+      body: JSON.stringify({ employeeIds, isActive }),
+    }),
+  bulkDeleteEmployees: (employeeIds: string[]): Promise<ApiResponse<{ deleted: number; failed: number }>> =>
+    apiRequest('/admin/employees/bulk-delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ employeeIds }),
+    }),
+  bulkUpdateEmployeeDepartment: (employeeIds: string[], department: string): Promise<ApiResponse<{ updated: number; failed: number }>> =>
+    apiRequest('/admin/employees/bulk-update-department', {
+      method: 'PATCH',
+      body: JSON.stringify({ employeeIds, department }),
+    }),
+  exportEmployeesToCSV: (): Promise<Blob> =>
+    fetch(`${API_BASE_URL}/admin/employees/export`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error('Failed to export employees');
+      }
+      return response.blob();
+    }),
   getEmployeeLeaveBalance: (id: string): Promise<ApiResponse<LeaveBalance>> => 
     apiRequest(`/admin/employees/${id}/leave-balance`),
+  getUserLeaveBalance: (id: string, year?: string): Promise<ApiResponse<Record<string, unknown>>> => 
+    apiRequest(`/admin/employees/${id}/leave-balance${year ? `?year=${year}` : ''}`),
   
   // Leave Requests
   getLeaveRequests: (params?: LeaveRequestParams): Promise<ApiResponse<PaginatedResponse<LeaveRequest>>> => 
@@ -358,6 +407,84 @@ export const adminAPI = {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
+
+  // Attendance Management
+  getAttendanceRecords: (params?: string): Promise<ApiResponse<AttendanceRecord[]>> => 
+    apiRequest(`/admin/attendance${params ? '?' + params : ''}`),
+  getAttendanceStats: (): Promise<ApiResponse<AttendanceStats>> => 
+    apiRequest('/admin/attendance/stats'),
+  getAttendanceRecordById: (id: string): Promise<ApiResponse<AttendanceRecord>> => 
+    apiRequest(`/admin/attendance/${id}`),
+  createAttendanceRecord: (recordData: CreateAttendanceRecordRequest): Promise<ApiResponse<AttendanceRecord>> =>
+    apiRequest('/admin/attendance', {
+      method: 'POST',
+      body: JSON.stringify(recordData),
+    }),
+  updateAttendanceRecord: (id: string, recordData: UpdateAttendanceRecordRequest): Promise<ApiResponse<AttendanceRecord>> =>
+    apiRequest(`/admin/attendance/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(recordData),
+    }),
+  deleteAttendanceRecord: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/admin/attendance/${id}`, {
+      method: 'DELETE',
+    }),
+  getUserAttendanceRecords: (userId: string, params?: string): Promise<ApiResponse<AttendanceRecord[]>> => 
+    apiRequest(`/admin/attendance/user/${userId}${params ? '?' + params : ''}`),
+
+  // Holidays
+  getHolidays: (params?: string): Promise<ApiResponse<PaginatedResponse<Holiday>>> => 
+    apiRequest(`/admin/holidays${params ? '?' + params : ''}`),
+  getHolidayById: (id: string): Promise<ApiResponse<Holiday>> => apiRequest(`/admin/holidays/${id}`),
+  createHoliday: (holidayData: CreateHolidayRequest): Promise<ApiResponse<Holiday>> =>
+    apiRequest('/admin/holidays', {
+      method: 'POST',
+      body: JSON.stringify(holidayData),
+    }),
+  updateHoliday: (id: string, holidayData: UpdateHolidayRequest): Promise<ApiResponse<Holiday>> =>
+    apiRequest(`/admin/holidays/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(holidayData),
+    }),
+  deleteHoliday: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/admin/holidays/${id}`, {
+      method: 'DELETE',
+    }),
+  toggleHolidayStatus: (id: string, isActive: boolean): Promise<ApiResponse<Holiday>> =>
+    apiRequest(`/admin/holidays/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    }),
+  getHolidayStats: (): Promise<ApiResponse<HolidayStats>> => apiRequest('/admin/holidays/stats'),
+  
+  // Salary Management
+  getEmployeeSalaries: (): Promise<ApiResponse<EmployeeSalary[]>> => apiRequest('/admin/salaries/employees'),
+  getMonthlySalaries: (params?: { year?: number; month?: number }): Promise<ApiResponse<MonthlySalary[]>> => 
+    apiRequest(`/admin/salaries/monthly${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  generateMonthlySalaries: (data: { year: number; month: number }): Promise<ApiResponse<MonthlySalary[]>> =>
+    apiRequest('/admin/salaries/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  approveMonthlySalary: (salaryId: string, data: { notes?: string }): Promise<ApiResponse<MonthlySalary>> =>
+    apiRequest(`/admin/salaries/${salaryId}/approve`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getSalaryStatistics: (params?: { year?: number; month?: number }): Promise<ApiResponse<SalaryStatistics>> => 
+    apiRequest(`/admin/salaries/statistics${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  calculateEmployeeSalary: (userId: string, params?: { year?: number; month?: number }): Promise<ApiResponse<SalaryCalculation>> => 
+    apiRequest(`/admin/salaries/calculate/${userId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  createEmployeeSalary: (salaryData: any): Promise<ApiResponse<EmployeeSalary>> =>
+    apiRequest('/admin/salaries/employees', {
+      method: 'POST',
+      body: JSON.stringify(salaryData),
+    }),
+  updateEmployeeSalary: (salaryId: string, salaryData: any): Promise<ApiResponse<EmployeeSalary>> =>
+    apiRequest(`/admin/salaries/employees/${salaryId}`, {
+      method: 'PUT',
+      body: JSON.stringify(salaryData),
+    }),
 };
 
 // Manager API endpoints
@@ -379,6 +506,11 @@ export const managerAPI = {
   getTeamMembers: (params?: TeamMemberParams): Promise<ApiResponse<PaginatedResponse<unknown>>> => 
     apiRequest(`/manager/team/members${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
   getTeamMemberById: (id: string): Promise<ApiResponse<User>> => apiRequest(`/manager/team/members/${id}`),
+  addTeamMember: (memberData: AddTeamMemberRequest): Promise<ApiResponse<User>> =>
+    apiRequest('/manager/team/members', {
+      method: 'POST',
+      body: JSON.stringify(memberData),
+    }),
   updateTeamMember: (id: string, memberData: UpdateTeamMemberRequest): Promise<ApiResponse<User>> =>
     apiRequest(`/manager/team/members/${id}`, {
       method: 'PUT',
@@ -396,6 +528,12 @@ export const managerAPI = {
     apiRequest(`/manager/team/members/${id}/recent-leaves${limit ? `?limit=${limit}` : ''}`),
   getTeamMemberLeaveBalance: (id: string): Promise<ApiResponse<LeaveBalance>> => 
     apiRequest(`/manager/team/members/${id}/leave-balance`),
+  
+  // Team Performance & Capacity
+  getTeamPerformanceMetrics: (): Promise<ApiResponse<TeamPerformanceMetrics>> => 
+    apiRequest('/manager/team/performance'),
+  getTeamCapacityMetrics: (): Promise<ApiResponse<TeamCapacityData>> => 
+    apiRequest('/manager/team/capacity'),
   
   // Leave Approvals
   getLeaveApprovals: (params?: LeaveApprovalParams): Promise<ApiResponse<PaginatedResponse<LeaveRequest>>> => 
@@ -426,6 +564,31 @@ export const managerAPI = {
     apiRequest('/manager/policies/stats'),
   getLeavePolicyTypes: (): Promise<ApiResponse<string[]>> => apiRequest('/manager/policies/types'),
   
+  // Manager Leave Requests
+  createLeaveRequest: (leaveData: CreateLeaveRequest): Promise<ApiResponse<LeaveRequest>> =>
+    apiRequest('/manager/leave-requests', {
+      method: 'POST',
+      body: JSON.stringify(leaveData),
+    }),
+  getLeaveRequests: (params?: LeaveRequestParams): Promise<ApiResponse<PaginatedResponse<LeaveRequest>>> => 
+    apiRequest(`/manager/leave-requests${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getLeaveRequestById: (id: string): Promise<ApiResponse<LeaveRequest>> => apiRequest(`/manager/leave-requests/${id}`),
+  updateLeaveRequest: (id: string, updateData: UpdateLeaveRequest): Promise<ApiResponse<LeaveRequest>> =>
+    apiRequest(`/manager/leave-requests/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    }),
+  cancelLeaveRequest: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/manager/leave-requests/${id}`, {
+      method: 'DELETE',
+    }),
+  getLeaveHistory: (params?: LeaveHistoryParams): Promise<ApiResponse<PaginatedResponse<LeaveRequest>>> => 
+    apiRequest(`/manager/leave-history${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getRecentRequests: (limit?: number, params?: Record<string, unknown>): Promise<ApiResponse<LeaveRequest[]>> => 
+    apiRequest(`/manager/leave-requests/recent${limit ? `?limit=${limit}` : ''}${params ? '&' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getLeaveBalance: (params?: Record<string, unknown>): Promise<ApiResponse<Record<string, unknown>>> => 
+    apiRequest(`/manager/leave-balance${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+
   // Profile Management
   getProfile: (): Promise<ApiResponse<User>> => apiRequest('/manager/profile'),
   updateProfile: (profileData: UpdateProfileRequest): Promise<ApiResponse<User>> =>
@@ -433,6 +596,31 @@ export const managerAPI = {
       method: 'PUT',
       body: JSON.stringify(profileData),
     }),
+
+  // Holidays
+  getUpcomingHolidays: (limit?: number): Promise<ApiResponse<UpcomingHoliday[]>> => 
+    apiRequest(`/manager/holidays/upcoming${limit ? `?limit=${limit}` : ''}`),
+  getHolidaysByYear: (year?: number): Promise<ApiResponse<UpcomingHoliday[]>> => 
+    apiRequest(`/manager/holidays/year${year ? `?year=${year}` : ''}`),
+  
+  // Salary Management
+  getTeamSalaries: (): Promise<ApiResponse<EmployeeSalary[]>> => apiRequest('/manager/salaries/team'),
+  getTeamMonthlySalaries: (params?: { year?: number; month?: number }): Promise<ApiResponse<MonthlySalary[]>> => 
+    apiRequest(`/manager/salaries/monthly${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  generateTeamMonthlySalaries: (data: { year: number; month: number }): Promise<ApiResponse<MonthlySalary[]>> =>
+    apiRequest('/manager/salaries/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  approveTeamMonthlySalary: (salaryId: string, data: { notes?: string }): Promise<ApiResponse<MonthlySalary>> =>
+    apiRequest(`/manager/salaries/${salaryId}/approve`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getTeamSalaryStatistics: (params?: { year?: number; month?: number }): Promise<ApiResponse<SalaryStatistics>> => 
+    apiRequest(`/manager/salaries/statistics${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  calculateTeamMemberSalary: (userId: string, params?: { year?: number; month?: number }): Promise<ApiResponse<SalaryCalculation>> => 
+    apiRequest(`/manager/salaries/calculate/${userId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
 };
 
 // Employee API endpoints
@@ -446,7 +634,7 @@ export const employeeAPI = {
   getRecentRequests: (limit?: number, params?: Record<string, string>): Promise<ApiResponse<LeaveRequest[]>> => 
     apiRequest(`/employee/dashboard/recent-requests${limit ? `?limit=${limit}` : ''}${params ? (limit ? '&' : '?') + new URLSearchParams(params).toString() : ''}`),
   getUpcomingHolidays: (limit?: number): Promise<ApiResponse<UpcomingHoliday[]>> => 
-    apiRequest(`/employee/dashboard/upcoming-holidays${limit ? `?limit=${limit}` : ''}`),
+    apiRequest(`/employee/holidays/upcoming${limit ? `?limit=${limit}` : ''}`),
   getTeamInfo: (): Promise<ApiResponse<TeamInfo>> => apiRequest('/employee/dashboard/team-info'),
   getPerformanceMetrics: (): Promise<ApiResponse<PerformanceMetrics>> => apiRequest('/employee/dashboard/performance'),
   getNotifications: (limit?: number): Promise<ApiResponse<Notification[]>> => 
@@ -481,8 +669,8 @@ export const employeeAPI = {
   
   
   // Profile Management
-  getProfile: (): Promise<ApiResponse<User>> => apiRequest('/employee/profile'),
-  updateProfile: (profileData: UpdateProfileRequest): Promise<ApiResponse<User>> =>
+  getProfile: (): Promise<ApiResponse<Record<string, unknown>>> => apiRequest('/employee/profile'),
+  updateProfile: (profileData: UpdateProfileRequest): Promise<ApiResponse<Record<string, unknown>>> =>
     apiRequest('/employee/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),

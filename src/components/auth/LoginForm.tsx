@@ -306,7 +306,7 @@ const LoginForm: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-center">
                   <div className="flex items-center space-x-2">
                     <input
                       id="remember"
@@ -317,12 +317,6 @@ const LoginForm: React.FC = () => {
                       Remember me
                     </Label>
                   </div>
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
-                  >
-                    Forgot password?
-                  </Link>
                 </div>
 
                 <Button 
@@ -362,8 +356,8 @@ const LoginForm: React.FC = () => {
                 </div>
               </form>
 
-              {/* Demo Accounts */}
-              <div className="mt-8 space-y-4">
+              {/* Demo Accounts - Hidden */}
+              {/* <div className="mt-8 space-y-4">
                 <div className="text-center">
                   <h3 className="text-sm font-medium text-slate-700 mb-3">Demo Accounts</h3>
                   <p className="text-xs text-slate-500 mb-4">
@@ -407,7 +401,7 @@ const LoginForm: React.FC = () => {
                     All demo accounts use password: <span className="font-mono font-medium">password123</span>
                   </p>
                 </div>
-              </div>
+              </div> */}
             </CardContent>
           </Card>
         </div>

@@ -8,12 +8,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EnhancedSelect, EnhancedSelectItem, LeaveTypeSelectItem } from '@/components/ui/enhanced-select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, Loader2, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { employeeAPI } from '@/lib/api';
+import { employeeAPI, managerAPI, adminAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { APP_CONFIG } from '@/lib/config';
 import { handleFormValidationErrors } from '@/lib/formUtils';
 import { LeavePolicy } from '@/types/leave';
 
@@ -90,11 +93,12 @@ type LeaveRequestAPIData = {
 };
 
 interface LeaveRequestFormProps {
-  onSubmit?: (data: LeaveRequestAPIData) => void;
+  onSubmit?: (data: LeaveRequestAPIData) => Promise<void>;
   className?: string;
 }
 
 const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className }) => {
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [documents, setDocuments] = useState<File[]>([]);
   const [leavePolicies, setLeavePolicies] = useState<LeavePolicy[]>([]);
@@ -118,16 +122,35 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   // Fetch leave policies on component mount
   useEffect(() => {
     const fetchLeavePolicies = async () => {
+      if (!user) return;
+      
       try {
         setLoadingPolicies(true);
-        const response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+        console.log('🔍 LeaveRequestForm: Fetching leave policies for user role:', user.role);
+        
+        let response;
+        // Use role-based API calls
+        switch (user.role) {
+          case 'employee':
+            response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+            break;
+          case 'manager':
+            response = await managerAPI.getLeavePolicies({ status: 'active', limit: 50 });
+            break;
+          case 'admin':
+            response = await adminAPI.getLeavePolicies({ status: 'active', limit: 50 });
+            break;
+          default:
+            throw new Error('Invalid user role');
+        }
+        
         if (response.success && response.data) {
           const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
           setLeavePolicies(policies);
-          console.log('🔍 LeaveRequestForm: Fetched leave policies:', policies);
+          console.log('✅ LeaveRequestForm: Fetched leave policies:', policies);
         }
       } catch (error) {
-        console.error('Error fetching leave policies:', error);
+        console.error('❌ LeaveRequestForm: Error fetching leave policies:', error);
         toast({
           title: 'Error',
           description: 'Failed to load leave policies. Using default options.',
@@ -139,7 +162,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     };
 
     fetchLeavePolicies();
-  }, []);
+  }, [user]);
 
   const calculateTotalDays = () => {
     if (!startDate || !endDate || 
@@ -162,9 +185,15 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     try {
       // Show loading toast
       toast({
-        title: 'Submitting request...',
+        title: "⏳ Submitting Request...",
         description: 'Please wait while we process your leave request.',
+        duration: APP_CONFIG.UI.TOAST_DURATION.SHORT,
       });
+      
+      // Debug: Log the raw form data
+      console.log('🔍 LeaveRequestForm: Raw form data received:', data);
+      console.log('🔍 LeaveRequestForm: Reason field value:', data.reason);
+      console.log('🔍 LeaveRequestForm: WorkHandover field value:', data.workHandover);
       
       // Transform form data to API format
       const leaveRequestData: LeaveRequestAPIData = {
@@ -183,15 +212,11 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
 
       // Pass data to parent component to handle API call
       if (onSubmit) {
-        onSubmit(leaveRequestData);
+        await onSubmit(leaveRequestData);
       }
     } catch (error) {
-      console.error('Error submitting leave request:', error);
-      toast({
-        title: 'Submission failed',
-        description: error instanceof Error ? error.message : 'Please try again later.',
-        variant: 'destructive',
-      });
+      console.error('Error in form submission:', error);
+      // Don't show error toast here - let parent component handle it
     } finally {
       setIsSubmitting(false);
     }
@@ -219,12 +244,6 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     <div className={className}>
       <div className="space-y-6">
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
-          {/* Debug info - remove in production */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="text-xs text-gray-500 p-2 bg-gray-100 rounded">
-              Debug: {leavePolicies.length} policies loaded, {leaveTypeOptions.length} options available
-            </div>
-          )}
           {/* Leave Type */}
           <div className="space-y-2">
             <Label htmlFor="leaveType">Leave Type *</Label>
@@ -240,22 +259,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                 <p className="text-xs text-muted-foreground">Please contact your administrator</p>
               </div>
             ) : (
-              <Select onValueChange={(value) => setValue('leaveType', value as LeaveRequestFormData['leaveType'])}>
-                <SelectTrigger className={`w-full h-10 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm focus:border-blue-300 focus:ring-2 focus:ring-blue-200 focus:outline-none ${errors.leaveType ? 'border-red-500' : ''}`}>
-                  <SelectValue placeholder="Select leave type" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-slate-200 rounded-md shadow-lg z-50 p-1">
-                  {leaveTypeOptions.map((option) => (
-                    <SelectItem 
-                      key={option.value} 
-                      value={option.value} 
-                      className="cursor-pointer relative flex w-full select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-slate-100 focus:bg-slate-100 data-[highlighted]:bg-slate-100 data-[state=checked]:bg-blue-50 data-[state=checked]:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-                    >
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <EnhancedSelect 
+                onValueChange={(value) => setValue('leaveType', value as LeaveRequestFormData['leaveType'])}
+                placeholder="Select leave type"
+                triggerClassName={errors.leaveType ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : ''}
+              >
+                {leaveTypeOptions.map((option) => (
+                  <LeaveTypeSelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </LeaveTypeSelectItem>
+                ))}
+              </EnhancedSelect>
             )}
             {errors.leaveType && (
               <p className="text-sm text-destructive">{errors.leaveType.message}</p>
@@ -364,9 +378,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
 
           {/* Reason */}
           <div className="space-y-2">
-            <Label htmlFor="reason">Reason for Leave *</Label>
+            <Label htmlFor="leave-reason-field">Reason for Leave *</Label>
             <Textarea
-              id="reason"
+              id="leave-reason-field"
               placeholder="Please provide a detailed reason for your leave request..."
               rows={4}
               {...register('reason')}
@@ -389,9 +403,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
 
           {/* Work Handover */}
           <div className="space-y-2">
-            <Label htmlFor="workHandover">Work Handover Notes</Label>
+            <Label htmlFor="work-handover-field">Work Handover Notes</Label>
             <Textarea
-              id="workHandover"
+              id="work-handover-field"
               placeholder="Any important work handover notes or pending tasks..."
               rows={3}
               {...register('workHandover')}

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import LeaveBalanceCard from '@/components/ui/LeaveBalanceCard';
+import { TeamMemberLeaveBalanceCard } from '@/components/hoc/withLeaveBalance';
 import { 
   ArrowLeft,
   Mail,
@@ -34,7 +34,6 @@ import {
   Coffee,
   Home,
   Workflow,
-  Activity,
   BarChart3,
   Crown,
   Shield,
@@ -64,11 +63,9 @@ interface TeamMember {
     casual: number;
   };
   joinDate: string;
-  skills: string[];
   currentProjects: string[];
   manager: string;
   directReports?: number;
-  performance?: number;
   lastActive?: string;
   location?: string;
   bio?: string;
@@ -97,13 +94,15 @@ const TeamMemberDetailPage: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      console.log('🔍 TeamMemberDetailPage: Fetching member details for ID:', memberId);
+      
       const response = await managerAPI.getTeamMemberById(memberId);
       
       if (response.success && response.data) {
         console.log('🔍 TeamMemberDetailPage: API Response:', response);
         console.log('🔍 TeamMemberDetailPage: Member data:', response.data);
-        console.log('🔍 TeamMemberDetailPage: Leave balance:', (response.data as any).leaveBalance);
-        setMember(response.data as TeamMember);
+        console.log('🔍 TeamMemberDetailPage: Leave balance:', (response.data as unknown as Record<string, unknown>).leaveBalance);
+        setMember(response.data as unknown as TeamMember);
       } else {
         setError('Member not found');
       }
@@ -119,6 +118,8 @@ const TeamMemberDetailPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Leave balance is now handled by the HOC
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -138,12 +139,6 @@ const TeamMemberDetailPage: React.FC = () => {
     }
   };
 
-  const getPerformanceColor = (performance: number) => {
-    if (typeof performance !== 'number') return 'text-gray-600';
-    if (performance >= 90) return 'text-green-600';
-    if (performance >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
 
   if (loading) {
     return (
@@ -177,10 +172,11 @@ const TeamMemberDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       {/* Header */}
-      <div className="bg-white/90 backdrop-blur-md border-b border-white/20 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            <div className="flex items-center space-x-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <Card className="bg-white/90 backdrop-blur-md border-white/20 shadow-xl rounded-2xl">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-6">
               <Button
                 variant="ghost"
                 onClick={() => navigate('/manager/team')}
@@ -201,8 +197,8 @@ const TeamMemberDetailPage: React.FC = () => {
                   <p className="text-muted-foreground text-lg">{member.position}</p>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center space-x-3">
+              </div>
+              <div className="flex items-center space-x-3">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="bg-white/50 border-white/20 hover:bg-white/80">
@@ -225,12 +221,13 @@ const TeamMemberDetailPage: React.FC = () => {
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm font-medium text-green-700">System Online</span>
               </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Left Column - Main Info */}
           <div className="lg:col-span-2 space-y-8">
@@ -305,20 +302,6 @@ const TeamMemberDetailPage: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-3 block">Skills</label>
-                  <div className="flex flex-wrap gap-2">
-                    {member.skills && member.skills.length > 0 ? (
-                      member.skills.map((skill, index) => (
-                        <Badge key={index} variant="secondary" className="text-sm">
-                          {skill}
-                        </Badge>
-                      ))
-                    ) : (
-                      <p className="text-muted-foreground">No skills listed</p>
-                    )}
-                  </div>
-                </div>
-                <div>
                   <label className="text-sm font-medium text-muted-foreground mb-3 block">Current Projects</label>
                   <div className="flex flex-wrap gap-2">
                     {member.currentProjects && member.currentProjects.length > 0 ? (
@@ -336,82 +319,16 @@ const TeamMemberDetailPage: React.FC = () => {
             </Card>
 
             {/* Performance Metrics */}
-            {member.performance && typeof member.performance === 'number' && (
-              <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg">
-                      <BarChart3 className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-xl">Performance</CardTitle>
-                      <p className="text-sm text-muted-foreground">Current performance metrics</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">Overall Performance</span>
-                      <span className={`text-lg font-bold ${getPerformanceColor(member.performance)}`}>
-                        {member.performance}%
-                      </span>
-                    </div>
-                    <Progress value={member.performance} className="h-2" />
-                    <div className="flex items-center space-x-1">
-                      <Star className={`h-4 w-4 ${getPerformanceColor(member.performance)}`} />
-                      <span className={`text-sm font-medium ${getPerformanceColor(member.performance)}`}>
-                        {member.performance >= 90 ? 'Excellent' : member.performance >= 70 ? 'Good' : 'Needs Improvement'}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
           {/* Right Column - Additional Info */}
           <div className="space-y-8">
-            {/* Quick Stats */}
-            <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg">
-                    <Activity className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Quick Stats</CardTitle>
-                    <p className="text-sm text-muted-foreground">Key metrics</p>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Direct Reports</span>
-                  <span className="font-semibold">{member.directReports || 0}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Years with Company</span>
-                  <span className="font-semibold">
-                    {Math.floor((new Date().getTime() - new Date(member.joinDate).getTime()) / (1000 * 60 * 60 * 24 * 365))}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Status</span>
-                  <Badge variant="outline" className={`text-xs ${getStatusColor(member.status)}`}>
-                    {getStatusIcon(member.status)}
-                    <span className="ml-1">{member.status}</span>
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
 
-            {/* Leave Balance */}
-            <LeaveBalanceCard 
-              leaveBalance={member.leaveBalance} 
-              title="Leave Balance"
-              showTitle={true}
-              compact={false}
+            {/* Leave Balance - Using HOC */}
+            <TeamMemberLeaveBalanceCard 
+              employeeId={id || ''}
+              customTitle="Leave Balance"
+              customDescription="Team member's current leave balance"
             />
 
             {/* Emergency Contact */}

@@ -52,12 +52,6 @@ export interface ChangePasswordRequest {
 }
 
 // User API types
-export interface UpdateProfileRequest {
-  name?: string;
-  email?: string;
-  department?: string;
-  profilePicture?: string;
-}
 
 export interface CreateUserRequest {
   name: string;
@@ -89,7 +83,10 @@ export interface CreateLeaveRequest {
   endDate: string;
   reason: string;
   isHalfDay?: boolean;
-  documents?: string[];
+  halfDayPeriod?: 'morning' | 'afternoon';
+  emergencyContact?: string;
+  workHandover?: string;
+  attachments?: string[];
 }
 
 export interface UpdateLeaveRequest {
@@ -98,7 +95,10 @@ export interface UpdateLeaveRequest {
   endDate?: string;
   reason?: string;
   isHalfDay?: boolean;
-  documents?: string[];
+  halfDayPeriod?: 'morning' | 'afternoon';
+  emergencyContact?: string;
+  workHandover?: string;
+  attachments?: string[];
 }
 
 export interface UpdateLeaveStatusRequest {
@@ -201,9 +201,37 @@ export interface Holiday {
   id: string;
   name: string;
   date: Date;
-  type: 'national' | 'company' | 'religious';
+  type: 'national' | 'company' | 'religious' | 'public';
   description?: string;
   isRecurring: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+export interface CreateHolidayRequest {
+  name: string;
+  date: Date;
+  type: 'national' | 'company' | 'religious' | 'public';
+  description?: string;
+  isRecurring: boolean;
+}
+
+export interface UpdateHolidayRequest {
+  name?: string;
+  date?: Date;
+  type?: 'national' | 'company' | 'religious' | 'public';
+  description?: string;
+  isRecurring?: boolean;
+  isActive?: boolean;
+}
+
+export interface HolidayStats {
+  totalHolidays: number;
+  activeHolidays: number;
+  inactiveHolidays: number;
+  byType: Record<string, number>;
 }
 
 export interface DepartmentStats {
@@ -249,12 +277,8 @@ export interface CreateEmployeeRequest {
   role: UserRole;
   department: string;
   managerId?: string;
-  hireDate: string;
-  salary?: number;
   phone?: string;
-  address?: string;
-  emergencyContact?: string;
-  emergencyPhone?: string;
+  bio?: string;
 }
 
 export interface UpdateEmployeeRequest {
@@ -268,6 +292,7 @@ export interface UpdateEmployeeRequest {
   address?: string;
   emergencyContact?: string;
   emergencyPhone?: string;
+  avatar?: string;
 }
 
 export interface LeaveRequestParams {
@@ -487,13 +512,29 @@ export interface TeamMemberParams {
   sortOrder?: 'asc' | 'desc';
 }
 
+export interface AddTeamMemberRequest {
+  name: string;
+  email: string;
+  phone: string;
+  department: string;
+  role: string;
+  position: string;
+  salary: number;
+  startDate: string;
+  address: string;
+  emergencyContact: string;
+  emergencyPhone: string;
+  skills?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
 export interface UpdateTeamMemberRequest {
   name?: string;
   email?: string;
   department?: string;
+  password?: string;
   isActive?: boolean;
-  phone?: string;
-  address?: string;
 }
 
 export interface TeamStats {
@@ -558,6 +599,72 @@ export interface TeamMemberPerformance {
   averageResponseTime: number;
   punctuality: number;
   overallRating: number;
+}
+
+export interface TeamCapacityData {
+  totalMembers: number;
+  activeMembers: number;
+  onLeave: number;
+  available: number;
+  utilizationRate: number;
+  capacityScore: number;
+}
+
+// Attendance Types
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  department: string;
+  position: string;
+  avatar?: string;
+  date: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  status: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave';
+  hoursWorked: number;
+  overtimeHours: number;
+  notes?: string;
+  isHoliday: boolean;
+  isWeekend: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceStats {
+  totalRecords: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  halfDayCount: number;
+  onLeaveCount: number;
+  attendanceRate: number;
+  totalHoursWorked: number;
+  totalOvertimeHours: number;
+  averageHoursPerDay: number;
+}
+
+export interface CreateAttendanceRecordRequest {
+  userId: string;
+  date: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  status: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave';
+  hoursWorked: number;
+  overtimeHours: number;
+  notes?: string;
+  isHoliday: boolean;
+  isWeekend: boolean;
+}
+
+export interface UpdateAttendanceRecordRequest {
+  checkInTime?: string;
+  checkOutTime?: string;
+  status?: 'present' | 'absent' | 'late' | 'half_day' | 'on_leave';
+  hoursWorked?: number;
+  overtimeHours?: number;
+  notes?: string;
 }
 
 export interface LeaveApprovalParams {
@@ -777,11 +884,10 @@ export interface LeaveHistorySummary {
 
 export interface UpdateProfileRequest {
   name?: string;
-  email?: string;
   phone?: string;
+  bio?: string;
   address?: string;
   emergencyContact?: string;
-  emergencyPhone?: string;
 }
 
 export interface UpdateAvatarRequest {
@@ -950,4 +1056,88 @@ export interface UpdateAppPreferencesRequest {
   dateFormat?: string;
   timeFormat?: string;
   weekStartsOn?: string;
+}
+
+// Salary Management Types
+export interface EmployeeSalary {
+  id: string;
+  userId: string;
+  baseSalary: number;
+  hourlyRate?: number;
+  currency: string;
+  effectiveDate: string;
+  endDate?: string;
+  isActive: boolean;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    department?: string;
+  };
+}
+
+export interface SalaryDeduction {
+  id: string;
+  type: 'leave_deduction' | 'tax_deduction' | 'other_deduction' | 'bonus' | 'overtime';
+  description: string;
+  amount: number;
+  leaveRequestId?: string;
+  isTaxable: boolean;
+  createdAt: string;
+}
+
+export interface MonthlySalary {
+  id: string;
+  userId: string;
+  year: number;
+  month: number;
+  baseSalary: number;
+  grossSalary: number;
+  totalDeductions: number;
+  netSalary: number;
+  status: 'draft' | 'calculated' | 'approved' | 'paid' | 'cancelled';
+  calculatedAt?: string;
+  approvedAt?: string;
+  paidAt?: string;
+  approvedBy?: string;
+  notes?: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    department?: string;
+  };
+  deductions: SalaryDeduction[];
+}
+
+export interface SalaryCalculation {
+  baseSalary: number;
+  grossSalary: number;
+  totalDeductions: number;
+  netSalary: number;
+  deductions: {
+    leaveDeductions: number;
+    taxDeductions: number;
+    otherDeductions: number;
+    bonuses: number;
+    overtime: number;
+  };
+  leaveRequests: Array<{
+    id: string;
+    leaveType: string;
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+    deductionAmount: number;
+  }>;
+}
+
+export interface SalaryStatistics {
+  totalEmployees: number;
+  totalGrossSalary: number;
+  totalDeductions: number;
+  totalNetSalary: number;
+  averageSalary: number;
+  leaveDeductions: number;
+  taxDeductions: number;
 }
