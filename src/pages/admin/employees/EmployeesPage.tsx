@@ -13,7 +13,6 @@ import {
   Filter, 
   MoreHorizontal,
   Edit,
-  Trash2,
   UserCheck,
   UserX,
   Building2,
@@ -310,77 +309,6 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedEmployees.length === 0) return;
-
-    const confirmed = await confirm({
-      title: 'Bulk Deactivate Employees',
-      description: `Are you sure you want to deactivate ${selectedEmployees.length} employee(s)? This will mark them as inactive but preserve their data and leave history.`,
-      confirmText: 'Deactivate All',
-      variant: 'destructive',
-    });
-
-    if (!confirmed) return;
-
-    try {
-      setBulkActionLoading(true);
-      
-      // Show loading state
-      toast({
-        title: 'Deactivating employees...',
-        description: `Processing ${selectedEmployees.length} employee(s). Please wait.`,
-      });
-      
-      const response = await adminAPI.bulkDeleteEmployees(selectedEmployees);
-      
-      if (response.success) {
-        toast({
-          title: 'Bulk deactivation completed',
-          description: `Successfully deactivated ${response.data.deleted} employee(s). ${response.data.failed > 0 ? `${response.data.failed} failed.` : ''}`,
-        });
-        
-        setSelectedEmployees([]);
-        setShowBulkActions(false);
-        
-        // Refresh the list
-        await fetchEmployees();
-        
-        // Also refresh dashboard data if available
-        if ((window as any).triggerGlobalRefresh) {
-          (window as any).triggerGlobalRefresh();
-        }
-      } else {
-        throw new Error(response.message || 'Failed to bulk deactivate employees');
-      }
-    } catch (error: unknown) {
-      console.error('❌ EmployeesPage: Error in bulk delete:', error);
-      
-      let errorMessage = 'Failed to bulk deactivate employees';
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'object' && error !== null) {
-        const errorObj = error as Record<string, unknown>;
-        if (errorObj.name === 'TypeError' && typeof errorObj.message === 'string' && errorObj.message.includes('fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else if (errorObj.status === 401) {
-          errorMessage = 'Authentication required. Please log in again.';
-        } else if (errorObj.status === 403) {
-          errorMessage = 'You do not have permission to deactivate employees.';
-        } else if (typeof errorObj.status === 'number' && errorObj.status >= 500) {
-          errorMessage = 'Server error. Please try again later.';
-        }
-      }
-      
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
 
   const handleBulkDepartmentUpdate = async (department: string) => {
     if (selectedEmployees.length === 0) return;
@@ -712,38 +640,6 @@ const EmployeesPage: React.FC = () => {
                           <SelectItem value="IT">IT</SelectItem>
                         </SelectContent>
                       </Select>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            disabled={bulkActionLoading}
-                            variant="outline"
-                            size="sm"
-                            className="border-red-200 text-red-700 hover:bg-red-50"
-                            aria-label="Delete selected employees"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Deactivate Selected Employees</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to deactivate {selectedEmployees.length} employee{selectedEmployees.length > 1 ? 's' : ''}? 
-                              This will mark them as inactive but preserve their data and leave history.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={handleBulkDelete}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Deactivate {selectedEmployees.length} Employee{selectedEmployees.length > 1 ? 's' : ''}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                       <Button
                         onClick={() => {
                           setSelectedEmployees([]);
@@ -1058,35 +954,6 @@ const EmployeesPage: React.FC = () => {
                                 </>
                               )}
                             </DropdownMenuItem>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <DropdownMenuItem
-                                  onSelect={(e) => e.preventDefault()}
-                                  className="hover:bg-red-50 hover:text-red-700"
-                                  aria-label={`Delete ${employee.name}`}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="bg-white/95 backdrop-blur-sm border-white/20">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will deactivate the employee and mark them as inactive. Their data and leave history will be preserved, but they will no longer be able to access the system.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteEmployee(employee.id, employee.name)}
-                                    className="bg-red-600 hover:bg-red-700"
-                                  >
-                                    Deactivate
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

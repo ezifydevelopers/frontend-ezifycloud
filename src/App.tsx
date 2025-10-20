@@ -145,21 +145,21 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/admin/attendance" element={
+            {/* <Route path="/admin/attendance" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>
                   <AttendancePage />
                 </DashboardLayout>
               </ProtectedRoute>
-            } />
+            } /> */}
             
-            <Route path="/admin/salary" element={
+            {/* <Route path="/admin/salary" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>
                   <SalaryManagementPage />
                 </DashboardLayout>
               </ProtectedRoute>
-            } />
+            } /> */}
             
             <Route path="/admin/capacity" element={
               <ProtectedRoute allowedRoles={['admin']}>
@@ -275,13 +275,13 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/manager/salary" element={
+            {/* <Route path="/manager/salary" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
                   <TeamSalaryPage />
                 </DashboardLayout>
               </ProtectedRoute>
-            } />
+            } /> */}
             
             <Route path="/manager/request-leave" element={
               <ProtectedRoute allowedRoles={['manager']}>

@@ -182,12 +182,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           href: '/admin/holidays',
           description: 'Manage public holidays'
         },
-        { 
-          icon: Clock, 
-          label: 'Attendance', 
-          href: '/admin/attendance',
-          description: 'Track employee attendance'
-        },
+        // { 
+        //   icon: Clock, 
+        //   label: 'Attendance', 
+        //   href: '/admin/attendance',
+        //   description: 'Track employee attendance'
+        // },
         { 
           icon: Building2, 
           label: 'Office Capacity', 
@@ -196,17 +196,17 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         },
       ]
     },
-    {
-      title: 'Finance',
-      items: [
-        { 
-          icon: DollarSign, 
-          label: 'Salary Management', 
-          href: '/admin/salary',
-          description: 'Manage employee salaries and deductions'
-        },
-      ]
-    },
+    // {
+    //   title: 'Finance',
+    //   items: [
+    //     { 
+    //       icon: DollarSign, 
+    //       label: 'Salary Management', 
+    //       href: '/admin/salary',
+    //       description: 'Manage employee salaries and deductions'
+    //     },
+    //   ]
+    // },
     {
       title: 'Configuration',
       items: [
@@ -269,17 +269,17 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     //     },
     //   ]
     // },
-    {
-      title: 'Finance',
-      items: [
-        { 
-          icon: DollarSign, 
-          label: 'Team Salary', 
-          href: '/manager/salary',
-          description: 'Manage team salaries and deductions'
-        },
-      ]
-    },
+    // {
+    //   title: 'Finance',
+    //   items: [
+    //     { 
+    //       icon: DollarSign, 
+    //       label: 'Team Salary', 
+    //       href: '/manager/salary',
+    //       description: 'Manage team salaries and deductions'
+    //     },
+    //   ]
+    // },
     {
       title: 'Configuration',
       items: [
