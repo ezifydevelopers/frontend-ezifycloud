@@ -52,14 +52,21 @@ const isCacheValid = (timestamp: number): boolean => {
   return Date.now() - timestamp < CACHE_TTL;
 };
 
-const getCacheKey = (userRole: string, endpoint: string, params?: any): string => {
-  return `${userRole}:${endpoint}:${JSON.stringify(params || {})}`;
+const getCacheKey = (userRole: string, endpoint: string, params?: any, user?: any): string => {
+  // Include region/employeeType in cache key for region-specific caching
+  let regionInfo = '';
+  if (user?.employeeType) {
+    regionInfo += `:${user.employeeType}`;
+  }
+  if (user?.region) {
+    regionInfo += `:${user.region}`;
+  }
+  return `${userRole}${regionInfo}:${endpoint}:${JSON.stringify(params || {})}`;
 };
 
 const getCachedData = (cache: Map<string, { data: any; timestamp: number }>, key: string): any | null => {
   const cached = cache.get(key);
   if (cached && isCacheValid(cached.timestamp)) {
-    console.log('📦 Using cached data for:', key);
     return cached.data;
   }
   return null;
@@ -67,7 +74,6 @@ const getCachedData = (cache: Map<string, { data: any; timestamp: number }>, key
 
 const setCachedData = (cache: Map<string, { data: any; timestamp: number }>, key: string, data: any): void => {
   cache.set(key, { data, timestamp: Date.now() });
-  console.log('💾 Cached data for:', key);
 };
 
 const invalidateCacheByType = (type: keyof GlobalCache, pattern?: string): void => {
@@ -77,13 +83,11 @@ const invalidateCacheByType = (type: keyof GlobalCache, pattern?: string): void 
     for (const [key] of cache) {
       if (key.includes(pattern)) {
         cache.delete(key);
-        console.log('🗑️ Invalidated cache entry:', key);
       }
     }
   } else {
     // Invalidate all entries of this type
     cache.clear();
-    console.log('🗑️ Invalidated all cache entries for type:', type);
   }
 };
 
@@ -101,12 +105,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setLoading(true);
       setError(null);
       
-      console.log('🔄 DashboardContext: Refreshing dashboard data for role:', user.role);
+      // Build region-specific params for employees
+      const dashboardParams: Record<string, string> = {};
+      if (user.role === 'employee' && user.employeeType) {
+        dashboardParams.employeeType = user.employeeType;
+      }
+      if (user.role === 'employee' && user.region) {
+        dashboardParams.region = user.region;
+      }
       
       let statsResponse;
       let leaveRequestsResponse;
       
-      // Fetch data based on user role
+      // Fetch data based on user role with region-specific params
       switch (user.role) {
         case 'admin':
           statsResponse = await adminAPI.getDashboardStats();
@@ -117,8 +128,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           leaveRequestsResponse = await managerAPI.getLeaveApprovals({ limit: 10 });
           break;
         case 'employee':
-          statsResponse = await employeeAPI.getDashboardStats();
-          leaveRequestsResponse = await employeeAPI.getRecentRequests(10);
+          statsResponse = await employeeAPI.getDashboardStats(Object.keys(dashboardParams).length > 0 ? dashboardParams : undefined);
+          leaveRequestsResponse = await employeeAPI.getRecentRequests(10, Object.keys(dashboardParams).length > 0 ? dashboardParams : undefined);
           break;
         default:
           throw new Error('Invalid user role');
@@ -131,16 +142,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         lastUpdated: Date.now()
       };
 
-      console.log('🔍 DashboardContext: Stats response:', statsResponse);
-      console.log('🔍 DashboardContext: Leave requests response:', leaveRequestsResponse);
-      console.log('🔍 DashboardContext: New data:', newData);
+      
 
       setDashboardData(newData);
-      console.log('✅ DashboardContext: Data refreshed successfully');
+      
       
     } catch (err) {
       console.error('❌ DashboardContext: Error fetching dashboard data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+      const errorMessage = err instanceof Error 
+        ? (err as any).isConnectionError 
+          ? 'Backend server is not running. Please start it with: cd backend-ezifycloud && npm run dev'
+          : err.message
+        : 'Failed to fetch dashboard data';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -154,7 +168,14 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     try {
-      console.log('🔄 DashboardContext: Refreshing leave requests...');
+      // Build region-specific params for employees
+      const requestParams: Record<string, string> = { limit: '10' };
+      if (user.role === 'employee' && user.employeeType) {
+        requestParams.employeeType = user.employeeType;
+      }
+      if (user.role === 'employee' && user.region) {
+        requestParams.region = user.region;
+      }
       
       let leaveRequestsResponse;
       switch (user.role) {
@@ -165,7 +186,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           leaveRequestsResponse = await managerAPI.getLeaveApprovals({ limit: 10 });
           break;
         case 'employee':
-          leaveRequestsResponse = await employeeAPI.getRecentRequests(10);
+          leaveRequestsResponse = await employeeAPI.getRecentRequests(10, Object.keys(requestParams).length > 1 ? requestParams : undefined);
           break;
         default:
           return;
@@ -182,7 +203,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           lastUpdated: Date.now()
         }));
         
-        console.log('✅ DashboardContext: Leave requests refreshed');
+        
       }
     } catch (err) {
       console.error('❌ DashboardContext: Error refreshing leave requests:', err);
@@ -193,7 +214,14 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     try {
-      console.log('🔄 DashboardContext: Refreshing stats...');
+      // Build region-specific params for employees
+      const dashboardParams: Record<string, string> = {};
+      if (user.role === 'employee' && user.employeeType) {
+        dashboardParams.employeeType = user.employeeType;
+      }
+      if (user.role === 'employee' && user.region) {
+        dashboardParams.region = user.region;
+      }
       
       let statsResponse;
       switch (user.role) {
@@ -204,7 +232,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           statsResponse = await managerAPI.getDashboardStats();
           break;
         case 'employee':
-          statsResponse = await employeeAPI.getDashboardStats();
+          statsResponse = await employeeAPI.getDashboardStats(Object.keys(dashboardParams).length > 0 ? dashboardParams : undefined);
           break;
         default:
           return;
@@ -217,7 +245,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           lastUpdated: Date.now()
         }));
         
-        console.log('✅ DashboardContext: Stats refreshed');
+        
       }
     } catch (err) {
       console.error('❌ DashboardContext: Error refreshing stats:', err);
@@ -228,19 +256,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     try {
-      console.log('🔄 DashboardContext: Refreshing leave balances...');
+      
       
       // Invalidate leave balance cache
       invalidateCacheByType('leaveBalances');
       
       // Trigger refresh for all cached leave balance requests
-      const cacheKey = getCacheKey(user.role, 'leave-balances');
+      const cacheKey = getCacheKey(user.role, 'leave-balances', undefined, user);
       const cached = globalCache.leaveBalances.get(cacheKey);
       if (cached) {
         globalCache.leaveBalances.delete(cacheKey);
       }
       
-      console.log('✅ DashboardContext: Leave balances cache invalidated');
+      
     } catch (err) {
       console.error('❌ DashboardContext: Error refreshing leave balances:', err);
     }
@@ -250,12 +278,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     try {
-      console.log('🔄 DashboardContext: Refreshing team members...');
+      
       
       // Invalidate team members cache
       invalidateCacheByType('teamMembers');
       
-      console.log('✅ DashboardContext: Team members cache invalidated');
+      
     } catch (err) {
       console.error('❌ DashboardContext: Error refreshing team members:', err);
     }
@@ -265,19 +293,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user) return;
 
     try {
-      console.log('🔄 DashboardContext: Refreshing employees...');
+      
       
       // Invalidate employees cache
       invalidateCacheByType('employees');
       
-      console.log('✅ DashboardContext: Employees cache invalidated');
+      
     } catch (err) {
       console.error('❌ DashboardContext: Error refreshing employees:', err);
     }
   }, [user]);
 
   const invalidateCache = useCallback((key: string) => {
-    console.log('🗑️ Invalidating cache for key:', key);
+    
     
     // Invalidate all cache types that might contain this key
     Object.keys(globalCache).forEach(cacheType => {
@@ -285,14 +313,13 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       for (const [cacheKey] of cache) {
         if (cacheKey.includes(key)) {
           cache.delete(cacheKey);
-          console.log('🗑️ Deleted cache entry:', cacheKey);
+          
         }
       }
     });
   }, []);
 
   const triggerGlobalRefresh = useCallback((type: 'leave' | 'employee' | 'team' | 'all') => {
-    console.log('🔄 Triggering global refresh for type:', type);
     
     switch (type) {
       case 'leave':
@@ -344,7 +371,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'dashboard-refresh' && e.newValue) {
-        console.log('🔄 DashboardContext: Received dashboard refresh signal from another tab');
+        
         fetchDashboardData();
         localStorage.removeItem('dashboard-refresh');
       }
@@ -352,7 +379,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (e.key === 'global-refresh' && e.newValue) {
         try {
           const refreshData = JSON.parse(e.newValue);
-          console.log('🔄 DashboardContext: Received global refresh signal from another tab:', refreshData);
           triggerGlobalRefresh(refreshData.type);
           localStorage.removeItem('global-refresh');
         } catch (err) {

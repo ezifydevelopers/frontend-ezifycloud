@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
 import { managerAPI } from '@/lib/api';
+import AdjustLeaveBalanceDialog from '@/components/dialogs/AdjustLeaveBalanceDialog';
 
 interface TeamMember {
   id: string;
@@ -82,6 +83,7 @@ const TeamMemberDetailPage: React.FC = () => {
   const [member, setMember] = useState<TeamMember | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [adjustingLeaveFor, setAdjustingLeaveFor] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -210,6 +212,10 @@ const TeamMemberDetailPage: React.FC = () => {
                   <DropdownMenuItem onClick={() => navigate(`/manager/team/${member.id}/edit`)}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Member
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAdjustingLeaveFor({ id: member.id, name: member.name })}>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Adjust Leave Balance
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-red-600">
                     <Trash2 className="h-4 w-4 mr-2" />
@@ -364,6 +370,23 @@ const TeamMemberDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Adjust Leave Balance Dialog */}
+      {adjustingLeaveFor && (
+        <AdjustLeaveBalanceDialog
+          open={!!adjustingLeaveFor}
+          onOpenChange={(open) => {
+            if (!open) setAdjustingLeaveFor(null);
+          }}
+          employeeId={adjustingLeaveFor.id}
+          employeeName={adjustingLeaveFor.name}
+          onSuccess={() => {
+            if (id) {
+              fetchMemberDetails(id);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

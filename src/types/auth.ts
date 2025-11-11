@@ -9,11 +9,23 @@ export interface User {
   managerId?: string;
   profilePicture?: string;
   isActive?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: Date;
+  rejectionReason?: string;
   phone?: string;
   bio?: string;
   address?: string;
   emergencyContact?: string;
   emergencyPhone?: string;
+  probationStatus?: 'active' | 'completed' | 'extended' | 'terminated' | null;
+  probationStartDate?: Date | null;
+  probationEndDate?: Date | null;
+  probationDuration?: number | null;
+  probationCompletedAt?: Date | null;
+  employeeType?: 'onshore' | 'offshore' | null;
+  region?: string | null;
+  timezone?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

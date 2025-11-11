@@ -12,6 +12,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
 import DashboardStatsCards from '@/components/dashboard/DashboardStatsCards';
 import TeamStatusCard from '@/components/dashboard/TeamStatusCard';
+import TeamCapacityOverview from '@/components/capacity/TeamCapacityOverview';
 import {
   Users,
   Clock,
@@ -37,6 +38,7 @@ import {
   Sparkles,
   LayoutDashboard,
   Calendar,
+  CalendarDays,
 } from 'lucide-react';
 
 const ManagerDashboard: React.FC<WithDashboardDataProps> = ({ 
@@ -48,12 +50,15 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
   const navigate = useNavigate();
   const [upcomingHolidays, setUpcomingHolidays] = useState<Record<string, unknown>[]>([]);
   const [holidaysLoading, setHolidaysLoading] = useState(true);
+  const [upcomingLeaves, setUpcomingLeaves] = useState<Record<string, unknown>[]>([]);
+  const [leavesLoading, setLeavesLoading] = useState(true);
 
   // Handle refresh with loading state
   const handleRefresh = async () => {
     await Promise.all([
       refreshDashboardData(),
-      fetchUpcomingHolidays()
+      fetchUpcomingHolidays(),
+      fetchUpcomingLeaves()
     ]);
   };
 
@@ -79,12 +84,35 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
     }
   };
 
+  // Fetch upcoming leaves
+  const fetchUpcomingLeaves = async () => {
+    try {
+      setLeavesLoading(true);
+      console.log('🔍 ManagerDashboard: Fetching upcoming leaves...');
+      const response = await managerAPI.getUpcomingLeaves(5);
+      console.log('📅 ManagerDashboard: Leaves response:', response);
+      if (response.success && response.data) {
+        setUpcomingLeaves(response.data as unknown as Record<string, unknown>[]);
+        console.log('✅ ManagerDashboard: Leaves fetched successfully:', response.data);
+      } else {
+        console.log('❌ ManagerDashboard: No leaves data:', response);
+        setUpcomingLeaves([]);
+      }
+    } catch (error) {
+      console.error('❌ ManagerDashboard: Error fetching upcoming leaves:', error);
+      setUpcomingLeaves([]);
+    } finally {
+      setLeavesLoading(false);
+    }
+  };
+
   // Team capacity data is now handled by the centralized HOC
 
-  // Fetch holidays on component mount
+  // Fetch holidays and leaves on component mount
   useEffect(() => {
-    console.log('🔄 ManagerDashboard: Component mounted, fetching holidays...');
+    console.log('🔄 ManagerDashboard: Component mounted, fetching holidays and leaves...');
     fetchUpcomingHolidays();
+    fetchUpcomingLeaves();
   }, []);
 
   // Dashboard data is now handled by the centralized HOC
@@ -96,6 +124,7 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
         console.log('🔄 ManagerDashboard: Page became visible, refreshing data...');
         refreshDashboardData();
         fetchUpcomingHolidays();
+        fetchUpcomingLeaves();
       }
     };
 
@@ -143,6 +172,13 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Team Capacity Overview - Widget */}
+            <TeamCapacityOverview
+              variant="widget"
+              title="Team Capacity"
+              subtitle="Quick view of your team's current availability"
+            />
+
             {/* Pending Approvals */}
             <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
               <CardHeader className="pb-4">
@@ -222,8 +258,7 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
               
           </CardContent>
         </Card>
-
-        </div>
+          </div>
 
           {/* Right Column */}
           <div className="space-y-8">
@@ -243,26 +278,33 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
               <CardContent className="space-y-3">
                 <Button 
                   className="w-full justify-start bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
+                  onClick={() => navigate('/manager/team')}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Team Overview
+                </Button>
+                <Button 
+                  className="w-full justify-start bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white"
                   onClick={() => navigate('/manager/approvals')}
                 >
                   <UserCheck className="h-4 w-4 mr-2" />
                   Review Approvals
                 </Button>
-                {/* Request Leave button temporarily hidden */}
-                {/* <Button 
-                  className="w-full justify-start bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-                  onClick={() => navigate('/manager/leave-management')}
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Request Leave
-                </Button> */}
                 <Button 
                   variant="outline" 
                   className="w-full justify-start border-slate-200 hover:bg-slate-50"
-                  onClick={() => navigate('/manager/team')}
+                  onClick={() => navigate('/manager/leave-management')}
                 >
-                  <Users className="h-4 w-4 mr-2" />
-                  Team Overview
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Leave Management
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start border-slate-200 hover:bg-slate-50"
+                  onClick={() => navigate('/manager/capacity')}
+                >
+                  <Target className="h-4 w-4 mr-2" />
+                  Team Capacity
                 </Button>
                 <Button 
                   variant="outline" 
@@ -279,6 +321,82 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
             <TeamStatusCard 
               dashboardData={centralizedData}
             />
+
+          {/* Upcoming Leaves */}
+          <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
+            <CardHeader>
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg">
+                  <CalendarDays className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Upcoming Leaves</CardTitle>
+                  <p className="text-sm text-muted-foreground">Team members scheduled time off</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {leavesLoading ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-500 mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Loading leaves...</p>
+                </div>
+              ) : upcomingLeaves.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingLeaves.map((leave: Record<string, unknown>) => {
+                    const user = leave.user as Record<string, unknown> | undefined;
+                    const employeeName = leave.employeeName as string || user?.name as string || 'Team Member';
+                    const leaveType = leave.leaveType as string || 'Leave';
+                    const days = leave.days as number || leave.totalDays as number || 0;
+                    const startDate = leave.startDate as string || '';
+                    const endDate = leave.endDate as string || '';
+                    const status = leave.status as string || 'pending';
+                    
+                    return (
+                      <div key={leave.id as string || Math.random().toString()} className="group p-3 rounded-2xl border border-slate-200/50 bg-gradient-to-r from-slate-50 to-amber-50/30 hover:shadow-md hover:border-amber-200/50 transition-all duration-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs">
+                                {employeeName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="space-y-1">
+                              <p className="font-semibold text-slate-800 text-sm">{employeeName}</p>
+                              <p className="text-xs text-slate-600">
+                                {leaveType} • {days} {days === 1 ? 'day' : 'days'}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {startDate && new Date(startDate).toLocaleDateString()} - {endDate && new Date(endDate).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge 
+                              variant="outline" 
+                              className={
+                                status === 'approved' 
+                                  ? 'bg-green-100 text-green-700 border-green-200' 
+                                  : 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                              }
+                            >
+                              {status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <CalendarDays className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-muted-foreground">No upcoming leaves</p>
+                  <p className="text-sm text-muted-foreground">Team members haven't scheduled leave</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Upcoming Holidays */}
           <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
@@ -341,7 +459,6 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
               )}
             </CardContent>
           </Card>
-
         </div>
       </div>
       </div>

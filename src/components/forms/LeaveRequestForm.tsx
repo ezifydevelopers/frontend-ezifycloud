@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { APP_CONFIG } from '@/lib/config';
 import { handleFormValidationErrors } from '@/lib/formUtils';
 import { LeavePolicy } from '@/types/leave';
+import { LeaveBalanceCard } from '@/components/hoc/withLeaveBalance';
 
 // Dynamic schema will be created based on available policies
 const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
@@ -103,6 +104,8 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   const [documents, setDocuments] = useState<File[]>([]);
   const [leavePolicies, setLeavePolicies] = useState<LeavePolicy[]>([]);
   const [loadingPolicies, setLoadingPolicies] = useState(true);
+  const [leaveBalance, setLeaveBalance] = useState<Record<string, { total: number; used: number; remaining: number }>>({});
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const {
     register,
@@ -164,6 +167,44 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     fetchLeavePolicies();
   }, [user]);
 
+  // Fetch leave balance
+  useEffect(() => {
+    const fetchLeaveBalance = async () => {
+      if (!user) return;
+      
+      try {
+        setLoadingBalance(true);
+        const timestamp = Date.now();
+        let response;
+        
+        switch (user.role) {
+          case 'employee':
+            response = await employeeAPI.getLeaveBalance({ _t: timestamp } as Record<string, unknown>);
+            break;
+          case 'manager':
+            response = await managerAPI.getLeaveBalance({ _t: timestamp } as Record<string, unknown>);
+            break;
+          case 'admin':
+            response = await adminAPI.getUserLeaveBalance(user.id);
+            break;
+          default:
+            return;
+        }
+        
+        if (response.success && response.data) {
+          const balance = response.data as Record<string, { total: number; used: number; remaining: number }>;
+          setLeaveBalance(balance);
+        }
+      } catch (error) {
+        console.error('Error fetching leave balance:', error);
+      } finally {
+        setLoadingBalance(false);
+      }
+    };
+
+    fetchLeaveBalance();
+  }, [user]);
+
   const calculateTotalDays = () => {
     if (!startDate || !endDate || 
         !(startDate instanceof Date) || !(endDate instanceof Date) ||
@@ -176,6 +217,12 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   };
 
   const handleFormSubmit = async (data: LeaveRequestFormData) => {
+    // Prevent double submission
+    if (isSubmitting) {
+      console.warn('⚠️ LeaveRequestForm: Submission already in progress, ignoring duplicate request');
+      return;
+    }
+
     // Check for validation errors first
     if (handleFormValidationErrors(errors)) {
       return;
@@ -274,6 +321,28 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {errors.leaveType && (
               <p className="text-sm text-destructive">{errors.leaveType.message}</p>
             )}
+            {/* Paid/Unpaid Indicator */}
+            {leaveType && leavePolicies.length > 0 && (() => {
+              const selectedPolicy = leavePolicies.find(p => p.leaveType === leaveType);
+              const isPaid = selectedPolicy?.isPaid ?? true;
+              return (
+                <div className="mt-2">
+                  <Alert className={isPaid ? "border-green-200 bg-green-50" : "border-orange-200 bg-orange-50"}>
+                    <AlertCircle className={`h-4 w-4 ${isPaid ? "text-green-600" : "text-orange-600"}`} />
+                    <AlertDescription className="flex items-center gap-2">
+                      <span className={`text-sm font-medium ${isPaid ? "text-green-800" : "text-orange-800"}`}>
+                        {isPaid ? "✓ Paid Leave" : "⚠ Unpaid Leave"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {isPaid 
+                          ? "This leave will not affect your salary" 
+                          : "This leave will be deducted from your salary"}
+                      </span>
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Date Range */}
@@ -362,6 +431,36 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                 </SelectContent>
               </Select>
             </div>
+          )}
+
+          {/* Leave Balance Warning */}
+          {leaveType && leaveBalance[leaveType] && (
+            <Alert className={leaveBalance[leaveType].remaining < calculateTotalDays() ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'}>
+              <AlertCircle className={`h-4 w-4 ${leaveBalance[leaveType].remaining < calculateTotalDays() ? 'text-red-600' : 'text-blue-600'}`} />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">
+                      <strong>{leaveBalance[leaveType].remaining}</strong> days remaining out of <strong>{leaveBalance[leaveType].total}</strong> total days for {leaveTypeOptions.find(opt => opt.value === leaveType)?.label || leaveType}
+                    </span>
+                  </div>
+                  {leaveBalance[leaveType].remaining < calculateTotalDays() && (
+                    <div className="text-red-700 font-semibold text-sm bg-red-100 p-2 rounded border border-red-200">
+                      ⚠️ Leave Limit Exceeded: You have {leaveBalance[leaveType].remaining} days remaining but requested {calculateTotalDays()} days.
+                      <br />
+                      <span className="text-xs font-normal mt-1 block">
+                        Your request will be rejected. Please contact your manager/admin to add additional leave days or reduce your request.
+                      </span>
+                    </div>
+                  )}
+                  {leaveBalance[leaveType].remaining >= calculateTotalDays() && leaveBalance[leaveType].remaining < calculateTotalDays() + 2 && (
+                    <div className="text-orange-700 text-xs bg-orange-50 p-2 rounded border border-orange-200">
+                      ⚠️ Low balance: Only {leaveBalance[leaveType].remaining} days remaining after this request.
+                    </div>
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Total Days Display */}

@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PageHeader from '@/components/layout/PageHeader';
 import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
+import { LeaveRequest } from '@/types/leave';
 import AdminDashboardStatsCards from '@/components/dashboard/AdminDashboardStatsCards';
 import {
   Users,
@@ -28,19 +30,15 @@ import {
   BarChart3,
   LayoutDashboard,
   RefreshCw,
+  BookOpen,
+  Calendar,
+  Settings,
+  Eye,
+  Edit,
+  Plus,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
-
-interface LeaveRequest {
-  id: string;
-  employee?: {
-    name?: string;
-    department?: string;
-  };
-  leaveType?: string;
-  startDate?: string;
-  status?: string;
-  submittedAt?: string;
-}
 
 const AdminDashboard: React.FC<WithDashboardDataProps> = ({ 
   dashboardData: centralizedData, 
@@ -217,17 +215,115 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
+        {/* Combined Leave Management */}
         <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Calendar className="h-5 w-5 text-green-600" />
               </div>
-              Quick Actions
+              Leave Management
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent>
+            <Tabs defaultValue="requests" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="requests" className="text-xs">
+                  <FileText className="h-3 w-3 mr-1" />
+                  Requests
+                </TabsTrigger>
+                <TabsTrigger value="policies" className="text-xs">
+                  <BookOpen className="h-3 w-3 mr-1" />
+                  Policies
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="requests" className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-200">
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Pending</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">
+                      {recentRequests.filter(req => req.status === 'pending').length}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-900">Approved</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">12</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-red-50 border border-red-200">
+                    <div className="flex items-center space-x-2">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-sm font-medium text-red-900">Rejected</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">3</Badge>
+                  </div>
+                </div>
+                <Button 
+                  className="w-full justify-start group hover:scale-105 transition-transform duration-200" 
+                  variant="outline"
+                  onClick={() => navigate('/admin/leave-management')}
+                >
+                  <Eye className="mr-2 h-4 w-4 group-hover:text-blue-600" />
+                  View All Requests
+                </Button>
+              </TabsContent>
+              
+              <TabsContent value="policies" className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50 border border-purple-200">
+                    <div className="flex items-center space-x-2">
+                      <BookOpen className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-900">Annual Leave</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">21 days</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-orange-50 border border-orange-200">
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="h-4 w-4 text-orange-600" />
+                      <span className="text-sm font-medium text-orange-900">Sick Leave</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">10 days</Badge>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-200">
+                    <div className="flex items-center space-x-2">
+                      <AlertCircle className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Emergency</span>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">5 days</Badge>
+                  </div>
+                </div>
+                <Button 
+                  className="w-full justify-start group hover:scale-105 transition-transform duration-200" 
+                  variant="outline"
+                  onClick={() => navigate('/admin/leave-management')}
+                >
+                  <Edit className="mr-2 h-4 w-4 group-hover:text-green-600" />
+                  Manage Policies
+                </Button>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
+            </div>
+            Quick Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
             <Button 
               className="w-full justify-start group hover:scale-105 transition-transform duration-200" 
               variant="outline"
@@ -239,22 +335,22 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
             <Button 
               className="w-full justify-start group hover:scale-105 transition-transform duration-200" 
               variant="outline"
-              onClick={() => navigate('/admin/leave-requests')}
+              onClick={() => navigate('/admin/holidays')}
             >
-              <FileText className="mr-2 h-4 w-4 group-hover:text-green-600" />
-              View Leave Requests
+              <Calendar className="mr-2 h-4 w-4 group-hover:text-green-600" />
+              Manage Holidays
             </Button>
             <Button 
               className="w-full justify-start group hover:scale-105 transition-transform duration-200" 
               variant="outline"
-              onClick={() => navigate('/admin/policies')}
+              onClick={() => navigate('/admin/settings')}
             >
-              <AlertCircle className="mr-2 h-4 w-4 group-hover:text-orange-600" />
-              Review Policies
+              <Settings className="mr-2 h-4 w-4 group-hover:text-orange-600" />
+              System Settings
             </Button>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Department Overview */}
       <Card className="bg-white/80 backdrop-blur-sm border-white/20 shadow-lg">

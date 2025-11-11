@@ -28,7 +28,6 @@ import {
   XCircle,
   Star,
   TrendingUp,
-  Activity,
   Target,
   BarChart3,
   RefreshCw,
@@ -254,8 +253,8 @@ const TeamOverviewPage: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <PageHeader
-          title="Team Overview"
-          subtitle="Manage and monitor your team members"
+          title="Team Overview & Capacity"
+          subtitle="Manage your team members and track capacity in one unified interface"
           icon={Users}
           iconColor="from-blue-600 to-purple-600"
         >
@@ -266,118 +265,120 @@ const TeamOverviewPage: React.FC = () => {
             className="bg-white/50 border-white/20 hover:bg-white/80"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </Button>
-          <Button
-            onClick={() => navigate('/manager/team/add')}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add Member
+            {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
           </Button>
         </PageHeader>
-        {/* Stats Cards */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Total Members</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.totalMembers}</p>
-                  <p className="text-xs text-muted-foreground">Team size</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                  <Users className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-emerald-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Active Members</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.activeMembers}</p>
-                  <p className="text-xs text-muted-foreground">Currently working</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
-                  <UserCheck className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Main Content */}
+        <div className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+              <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
+                <CardContent className="relative p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">Total Members</p>
+                      <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.totalMembers}</p>
+                      <p className="text-xs text-muted-foreground">Team size</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
+                      <Users className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
-            <CardContent className="relative p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">On Leave</p>
-                  <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.onLeaveMembers}</p>
-                  <p className="text-xs text-muted-foreground">Currently away</p>
-                </div>
-                <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
-                  <Calendar className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-emerald-600 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
+                <CardContent className="relative p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">Active Members</p>
+                      <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.activeMembers}</p>
+                      <p className="text-xs text-muted-foreground">Currently working</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
+                      <UserCheck className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-        </div>
-
-        {/* Filters and Search */}
-        <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl mb-8">
-          <CardContent className="p-6">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input
-                    placeholder="Search by name, email, or position..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-white/50 border-white/20 focus:bg-white/80"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-                  <SelectTrigger className="w-32 bg-white/50 border-white/20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    {getUniqueStatuses().map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status === 'active' ? 'Active' : 
-                         status === 'on-leave' ? 'On Leave' : 
-                         status === 'offline' ? 'Offline' : 
-                         String(status).charAt(0).toUpperCase() + String(status).slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={filters.department} onValueChange={(value) => setFilters(prev => ({ ...prev, department: value }))}>
-                  <SelectTrigger className="w-40 bg-white/50 border-white/20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Departments</SelectItem>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Card className="group relative overflow-hidden bg-white/90 backdrop-blur-sm border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 opacity-5 group-hover:opacity-10 transition-opacity duration-300"></div>
+                <CardContent className="relative p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">On Leave</p>
+                      <p className="text-2xl font-bold text-slate-900 mb-1">{teamStats.onLeaveMembers}</p>
+                      <p className="text-xs text-muted-foreground">Currently away</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
+                      <Calendar className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Team Members List */}
-        <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
+            {/* Filters and Search */}
+            <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
+              <CardContent className="p-6">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                      <Input
+                        placeholder="Search by name, email, or position..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 bg-white/50 border-white/20 focus:bg-white/80"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                      <SelectTrigger className="w-32 bg-white/50 border-white/20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        {getUniqueStatuses().map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status === 'active' ? 'Active' : 
+                             status === 'on-leave' ? 'On Leave' : 
+                             status === 'offline' ? 'Offline' : 
+                             String(status).charAt(0).toUpperCase() + String(status).slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={filters.department} onValueChange={(value) => setFilters(prev => ({ ...prev, department: value }))}>
+                      <SelectTrigger className="w-40 bg-white/50 border-white/20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Departments</SelectItem>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={() => navigate('/manager/team/add')}
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Add Member
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Team Members List */}
+            <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -520,6 +521,7 @@ const TeamOverviewPage: React.FC = () => {
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
     </div>
   );

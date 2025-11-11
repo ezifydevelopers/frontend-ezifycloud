@@ -29,8 +29,19 @@ import {
   AlertCircle,
   CalendarDays,
   Clock3,
+  Settings,
+  TrendingUp,
+  BookOpen,
+  Flag,
+  ArrowRight,
+  Eye,
+  MapPin,
+  Globe,
+  Building2,
+  Plane,
 } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/config';
+import { useToast } from '@/hooks/use-toast';
 
 // Interface for dashboard data structure
 interface DashboardData {
@@ -75,22 +86,27 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [upcomingHolidays, setUpcomingHolidays] = useState<Record<string, unknown>[]>([]);
   const [holidaysLoading, setHolidaysLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Record<string, unknown>[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [performanceMetrics, setPerformanceMetrics] = useState<Record<string, unknown> | null>(null);
 
   // Fetch upcoming holidays
   const fetchUpcomingHolidays = async () => {
     try {
       setHolidaysLoading(true);
       console.log('🔍 EmployeeDashboard: Fetching upcoming holidays...');
-      const response = await employeeAPI.getUpcomingHolidays(5);
+      const response = await employeeAPI.getUpcomingHolidays(10);
       console.log('📅 EmployeeDashboard: Holidays response:', response);
       if (response.success && response.data) {
-        setUpcomingHolidays(response.data as unknown as Record<string, unknown>[]);
-        console.log('✅ EmployeeDashboard: Holidays fetched successfully:', response.data);
+        const holidays = Array.isArray(response.data) ? response.data : [];
+        setUpcomingHolidays(holidays as unknown as Record<string, unknown>[]);
+        console.log('✅ EmployeeDashboard: Holidays fetched successfully:', holidays);
       } else {
         console.log('❌ EmployeeDashboard: No holidays data:', response);
         setUpcomingHolidays([]);
@@ -100,6 +116,40 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
       setUpcomingHolidays([]);
     } finally {
       setHolidaysLoading(false);
+    }
+  };
+
+  // Fetch notifications
+  const fetchNotifications = async () => {
+    try {
+      setNotificationsLoading(true);
+      const response = await employeeAPI.getNotifications(5);
+      if (response.success && response.data) {
+        const notifs = Array.isArray(response.data) ? response.data : [];
+        setNotifications(notifs as unknown as Record<string, unknown>[]);
+      } else {
+        setNotifications([]);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      setNotifications([]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  // Fetch performance metrics
+  const fetchPerformanceMetrics = async () => {
+    try {
+      const response = await employeeAPI.getPerformanceMetrics();
+      if (response.success && response.data) {
+        setPerformanceMetrics(response.data as unknown as Record<string, unknown>);
+      } else {
+        setPerformanceMetrics(null);
+      }
+    } catch (error) {
+      console.error('Error fetching performance metrics:', error);
+      setPerformanceMetrics(null);
     }
   };
 
@@ -288,6 +338,8 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
 
     fetchDashboardData();
     fetchUpcomingHolidays();
+    fetchNotifications();
+    fetchPerformanceMetrics();
 
     // Set up auto-refresh every 5 minutes
     const refreshInterval = setInterval(() => {
@@ -295,6 +347,8 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
         console.log('🔄 Auto-refreshing dashboard data...');
         fetchDashboardData();
         fetchUpcomingHolidays();
+        fetchNotifications();
+        fetchPerformanceMetrics();
       }
     }, APP_CONFIG.UI.AUTO_REFRESH.DASHBOARD);
 
@@ -316,6 +370,18 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
   console.log('🔍 EmployeeDashboard: Centralized data:', centralizedData);
 
   // Use the separate holidays state instead of dashboard data
+
+  const getLeaveTypeDisplayName = (dbValue: string): string => {
+    const typeMap: { [key: string]: string } = {
+      'annual': 'Annual Leave',
+      'sick': 'Sick Leave',
+      'casual': 'Casual Leave',
+      'maternity': 'Maternity Leave',
+      'paternity': 'Paternity Leave',
+      'emergency': 'Emergency Leave'
+    };
+    return typeMap[dbValue?.toLowerCase()] || dbValue || 'Leave';
+  };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -386,13 +452,31 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
             <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-6 border border-white/30 shadow-2xl">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="p-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl">
                       <User className="h-6 w-6 text-white" />
                     </div>
-                    <h1 className="text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      Employee Dashboard
-                    </h1>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h1 className="text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                        Employee Dashboard
+                      </h1>
+                      {user?.employeeType && (
+                        <Badge 
+                          className={`${
+                            user.employeeType === 'onshore' 
+                              ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                              : 'bg-purple-100 text-purple-800 border-purple-200'
+                          }`}
+                        >
+                          {user.employeeType === 'onshore' ? (
+                            <MapPin className="h-3 w-3 mr-1" />
+                          ) : (
+                            <Plane className="h-3 w-3 mr-1" />
+                          )}
+                          {user.employeeType === 'onshore' ? 'Onshore' : 'Offshore'}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <p className="text-slate-600 text-base lg:text-lg">
                     Welcome back, <span className="font-semibold text-blue-600">{user?.name}</span>. Here's your personal overview.
@@ -406,6 +490,18 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                       <Clock className="h-4 w-4" />
                       <span>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
+                    {user?.region && (
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Globe className="h-4 w-4" />
+                        <span>{user.region}</span>
+                      </div>
+                    )}
+                    {user?.timezone && (
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Clock3 className="h-4 w-4" />
+                        <span>{user.timezone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -451,19 +547,38 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                 <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
                 <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
                   <CardHeader className="pb-4">
-                    <CardTitle className="flex items-center gap-3 text-xl">
-                      <div className="p-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl">
-                        <Clock className="h-5 w-5 text-white" />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-3 text-xl">
+                          <div className="p-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl">
+                            <Clock className="h-5 w-5 text-white" />
+                          </div>
+                          Recent Leave Requests
+                        </CardTitle>
+                        <p className="text-slate-600 text-sm mt-2">Your latest leave request submissions</p>
                       </div>
-                      Recent Leave Requests
-                    </CardTitle>
-                    <p className="text-slate-600 text-sm mt-2">Your latest leave request submissions</p>
+                      {recentRequests.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate('/employee/leave-history')}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          View All
+                          <ArrowRight className="h-4 w-4 ml-2" />
+                        </Button>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {recentRequests.length > 0 ? (
                       <div className="space-y-3">
                         {recentRequests.map((request: Record<string, unknown>) => (
-                          <div key={request.id as string || Math.random().toString()} className="group p-4 rounded-2xl border border-slate-200/50 bg-gradient-to-r from-slate-50 to-blue-50/30 hover:shadow-md hover:border-blue-200/50 transition-all duration-200">
+                          <div 
+                            key={request.id as string || Math.random().toString()} 
+                            className="group p-4 rounded-2xl border border-slate-200/50 bg-gradient-to-r from-slate-50 to-blue-50/30 hover:shadow-md hover:border-blue-200/50 transition-all duration-200 cursor-pointer"
+                            onClick={() => navigate(`/employee/leave-management?tab=history`)}
+                          >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center space-x-3">
                                 <Avatar className="h-10 w-10 ring-2 ring-white shadow-md">
@@ -473,7 +588,9 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                                 </Avatar>
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2">
-                                    <p className="font-semibold text-slate-800">{request.leaveType as string || request.type as string || 'Leave'}</p>
+                                    <p className="font-semibold text-slate-800">
+                                      {getLeaveTypeDisplayName(request.leaveType as string || request.type as string || '')}
+                                    </p>
                                     {request.isHalfDay && (
                                       <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
                                         Half Day
@@ -518,7 +635,7 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                         <h3 className="text-lg font-semibold text-slate-700 mb-2">No recent requests found</h3>
                         <p className="text-slate-500 mb-4">You haven't submitted any leave requests yet</p>
                         <Button
-                          onClick={() => navigate('/employee/request-leave')}
+                          onClick={() => navigate('/employee/leave-management')}
                           className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-6 py-2"
                         >
                           <PlusCircle className="h-4 w-4 mr-2" />
@@ -551,35 +668,127 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                       onClick={() => navigate('/employee/request-leave')}
                       className="w-full justify-start bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-12 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200"
                     >
-                      <PlusCircle className="h-5 w-5 mr-3" />
+                      <FileText className="h-5 w-5 mr-3" />
                       Request Leave
                     </Button>
                     <Button
-                      onClick={() => navigate('/employee/history')}
+                      onClick={() => navigate('/employee/leave-history')}
                       variant="outline"
                       className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
                     >
-                      <FileText className="h-5 w-5 mr-3" />
-                      View History
+                      <Clock className="h-5 w-5 mr-3" />
+                      Leave History
+                    </Button>
+                    <Button
+                      onClick={() => navigate('/employee/leave-reports')}
+                      variant="outline"
+                      className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
+                    >
+                      <BarChart3 className="h-5 w-5 mr-3" />
+                      Leave Reports
+                    </Button>
+                    <Button
+                      onClick={() => navigate('/employee/profile')}
+                      variant="outline"
+                      className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
+                    >
+                      <User className="h-5 w-5 mr-3" />
+                      My Profile
+                    </Button>
+                    <Button
+                      onClick={() => navigate('/employee/settings')}
+                      variant="outline"
+                      className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
+                    >
+                      <Settings className="h-5 w-5 mr-3" />
+                      Settings
                     </Button>
                   </CardContent>
                 </Card>
               </div>
-              {/* Team Information */}
+              {/* Employee Information */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
-                <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+                <Card className={`relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl ${
+                  user?.employeeType === 'onshore' 
+                    ? 'bg-gradient-to-br from-blue-50/50 to-purple-50/50 border-blue-200/50' 
+                    : user?.employeeType === 'offshore'
+                    ? 'bg-gradient-to-br from-purple-50/50 to-pink-50/50 border-purple-200/50'
+                    : ''
+                }`}>
                   <CardHeader className="pb-4">
                     <CardTitle className="flex items-center gap-3 text-xl">
-                      <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl">
-                        <User className="h-5 w-5 text-white" />
+                      <div className={`p-2 rounded-xl ${
+                        user?.employeeType === 'onshore'
+                          ? 'bg-gradient-to-r from-blue-500 to-purple-500'
+                          : user?.employeeType === 'offshore'
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500'
+                          : 'bg-gradient-to-r from-indigo-500 to-purple-500'
+                      }`}>
+                        <Building2 className="h-5 w-5 text-white" />
                       </div>
-                      Team Information
+                      Employee Information
                     </CardTitle>
-                    <p className="text-slate-600 text-sm mt-2">Your team and manager details</p>
+                    <p className="text-slate-600 text-sm mt-2">Your employee details and team information</p>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-slate-200/50">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {user?.employeeType && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">Employee Type</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-lg font-semibold capitalize">{user.employeeType}</p>
+                            <Badge 
+                              className={`${
+                                user.employeeType === 'onshore' 
+                                  ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                                  : 'bg-purple-100 text-purple-800 border-purple-200'
+                              }`}
+                            >
+                              {user.employeeType === 'onshore' ? (
+                                <MapPin className="h-3 w-3 mr-1" />
+                              ) : (
+                                <Plane className="h-3 w-3 mr-1" />
+                              )}
+                              {user.employeeType === 'onshore' ? 'Onshore' : 'Offshore'}
+                            </Badge>
+                          </div>
+                        </div>
+                      )}
+                      {user?.region && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">Region</p>
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-4 w-4 text-slate-500" />
+                            <p className="text-lg font-semibold">{user.region}</p>
+                          </div>
+                        </div>
+                      )}
+                      {user?.timezone && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">Timezone</p>
+                          <div className="flex items-center gap-2">
+                            <Clock3 className="h-4 w-4 text-slate-500" />
+                            <p className="text-lg font-semibold">{user.timezone}</p>
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Department</p>
+                        <p className="text-lg font-semibold">{user?.department || dashboardData?.stats?.teamInfo?.department || 'Not assigned'}</p>
+                      </div>
+                    </div>
+                    {user?.employeeType === 'offshore' && (
+                      <div className="mt-4 p-4 bg-white/50 rounded-lg border border-purple-200">
+                        <p className="text-sm font-medium text-muted-foreground mb-2">Offshore-Specific Notes</p>
+                        <ul className="text-sm space-y-1 text-muted-foreground">
+                          <li>• Different holiday calendar may apply</li>
+                          <li>• Timezone considerations for leave requests</li>
+                          <li>• Regional compliance requirements</li>
+                        </ul>
+                      </div>
+                    )}
+                    <div className="pt-4 border-t border-slate-200">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"></div>
@@ -596,14 +805,120 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                         <p className="text-sm text-slate-600">
                           {dashboardData?.stats?.teamInfo?.managerEmail || 'manager@company.com'}
                         </p>
-                        <p className="text-xs text-slate-500">
-                          Department: {dashboardData?.stats?.teamInfo?.department || user?.department || 'Unassigned'}
-                        </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Notifications */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+                <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-3 text-xl">
+                      <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+                        <AlertCircle className="h-5 w-5 text-white" />
+                      </div>
+                      Notifications
+                    </CardTitle>
+                    <p className="text-slate-600 text-sm mt-2">Recent updates and alerts</p>
+                  </CardHeader>
+                  <CardContent>
+                    {notificationsLoading ? (
+                      <div className="text-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500 mx-auto mb-2"></div>
+                        <p className="text-sm text-muted-foreground">Loading notifications...</p>
+                      </div>
+                    ) : notifications.length > 0 ? (
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                        {notifications.map((notification: Record<string, unknown>) => (
+                          <div 
+                            key={notification.id as string || Math.random().toString()} 
+                            className="p-3 rounded-lg border border-slate-200/50 bg-gradient-to-r from-slate-50 to-purple-50/30 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className="p-1.5 bg-purple-100 rounded-lg">
+                                <AlertCircle className="h-4 w-4 text-purple-600" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-slate-800 text-sm">{notification.title as string || 'Notification'}</p>
+                                <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                                  {notification.message as string || notification.description as string || ''}
+                                </p>
+                                {notification.createdAt && (
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    {new Date(notification.createdAt as string).toLocaleDateString()}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <AlertCircle className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No notifications</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Performance Metrics */}
+              {performanceMetrics && (
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+                  <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="flex items-center gap-3 text-xl">
+                        <div className="p-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl">
+                          <Target className="h-5 w-5 text-white" />
+                        </div>
+                        Performance
+                      </CardTitle>
+                      <p className="text-slate-600 text-sm mt-2">Your performance metrics</p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {performanceMetrics.overall && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700">Overall Score</span>
+                              <span className="text-sm font-bold text-amber-600">
+                                {typeof performanceMetrics.overall === 'number' 
+                                  ? performanceMetrics.overall.toFixed(1) 
+                                  : String(performanceMetrics.overall || '')}
+                              </span>
+                            </div>
+                            <Progress 
+                              value={typeof performanceMetrics.overall === 'number' ? performanceMetrics.overall * 20 : 0} 
+                              className="h-2"
+                            />
+                          </div>
+                        )}
+                        {performanceMetrics.attendance && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700">Attendance</span>
+                              <span className="text-sm font-semibold text-slate-600">
+                                {typeof performanceMetrics.attendance === 'number' 
+                                  ? `${performanceMetrics.attendance}%` 
+                                  : String(performanceMetrics.attendance || '')}
+                              </span>
+                            </div>
+                            <Progress 
+                              value={typeof performanceMetrics.attendance === 'number' ? performanceMetrics.attendance : 0} 
+                              className="h-2"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* Upcoming Holidays */}
               {holidaysLoading ? (
@@ -663,10 +978,10 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                               </div>
                               <div className="text-right">
                                 <p className="font-semibold text-slate-800 text-sm">
-                                  {new Date(holiday.date as string).toLocaleDateString()}
+                                  {holiday.date ? new Date(holiday.date as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
                                 </p>
                                 <p className="text-xs text-slate-500">
-                                  {new Date(holiday.date as string).toLocaleDateString('en-US', { weekday: 'long' })}
+                                  {holiday.date ? new Date(holiday.date as string).toLocaleDateString('en-US', { weekday: 'short' }) : ''}
                                 </p>
                               </div>
                             </div>

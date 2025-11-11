@@ -35,6 +35,9 @@ const employeeSchema = z.object({
   department: z.string().min(1, 'Please select a department'),
   managerId: z.string().optional(),
   isActive: z.boolean().default(true),
+  employeeType: z.enum(['onshore', 'offshore']).optional().nullable(),
+  region: z.string().optional().nullable(),
+  timezone: z.string().optional().nullable(),
 }).refine((data) => {
   // If creating new employee, password is required and must meet backend requirements
   if (!data.password) return true; // Will be handled in onSubmit
@@ -76,6 +79,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
       department: employee?.department || '',
       managerId: employee?.managerId || undefined,
       isActive: employee?.isActive ?? true,
+      employeeType: employee?.employeeType || null,
+      region: employee?.region || null,
+      timezone: employee?.timezone || null,
     },
   });
 
@@ -103,6 +109,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
           role: data.role,
           department: data.department,
           managerId: data.managerId,
+          employeeType: data.employeeType,
+          region: data.region,
+          timezone: data.timezone,
         };
         await adminAPI.updateEmployee(employee!.id, updateData);
         toast({
@@ -137,6 +146,9 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
           role: data.role!,
           department: data.department!,
           managerId: data.managerId,
+          employeeType: data.employeeType,
+          region: data.region,
+          timezone: data.timezone,
         };
         await adminAPI.createEmployee(employeeData);
         toast({
@@ -265,6 +277,66 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
               )}
             </div>
           </div>
+
+          {/* Employee Type and Region - Only for employees */}
+          {watchedRole === 'employee' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="employeeType">Employee Type</Label>
+                <Select
+                  value={watch('employeeType') || ''}
+                  onValueChange={(value) => setValue('employeeType', value === 'none' ? null : value as 'onshore' | 'offshore')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select employee type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not Specified</SelectItem>
+                    <SelectItem value="onshore">Onshore</SelectItem>
+                    <SelectItem value="offshore">Offshore</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="region">Region/Country</Label>
+                <Input
+                  id="region"
+                  placeholder="e.g., USA, India, UK"
+                  value={watch('region') || ''}
+                  onChange={(e) => setValue('region', e.target.value || null)}
+                />
+              </div>
+            </div>
+          )}
+
+          {watchedRole === 'employee' && watch('employeeType') && (
+            <div className="space-y-2">
+              <Label htmlFor="timezone">Timezone</Label>
+              <Select
+                value={watch('timezone') || ''}
+                onValueChange={(value) => setValue('timezone', value || null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select timezone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Not Specified</SelectItem>
+                  <SelectItem value="America/New_York">Eastern Time (ET)</SelectItem>
+                  <SelectItem value="America/Chicago">Central Time (CT)</SelectItem>
+                  <SelectItem value="America/Denver">Mountain Time (MT)</SelectItem>
+                  <SelectItem value="America/Los_Angeles">Pacific Time (PT)</SelectItem>
+                  <SelectItem value="Europe/London">London (GMT)</SelectItem>
+                  <SelectItem value="Europe/Paris">Paris (CET)</SelectItem>
+                  <SelectItem value="Asia/Dubai">Dubai (GST)</SelectItem>
+                  <SelectItem value="Asia/Kolkata">India (IST)</SelectItem>
+                  <SelectItem value="Asia/Singapore">Singapore (SGT)</SelectItem>
+                  <SelectItem value="Asia/Tokyo">Tokyo (JST)</SelectItem>
+                  <SelectItem value="Australia/Sydney">Sydney (AEST)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="flex items-center space-x-2">
             <Switch

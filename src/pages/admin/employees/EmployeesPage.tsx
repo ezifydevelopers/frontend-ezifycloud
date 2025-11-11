@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import LeaveBalanceOverviewCard from '@/components/ui/LeaveBalanceOverviewCard';
+import AdjustLeaveBalanceDialog from '@/components/dialogs/AdjustLeaveBalanceDialog';
 import { 
   Users, 
   Plus, 
@@ -31,6 +32,9 @@ import {
   AlertTriangle,
   Download,
   RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -65,8 +69,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { User } from '@/types/auth';
-import { adminAPI } from '@/lib/api';
+import { adminAPI } from '@/lib/api/adminAPI';
 import { toast } from '@/hooks/use-toast';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import EmployeeForm from './components/EmployeeForm';
@@ -85,12 +90,17 @@ const EmployeesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<User | null>(null);
+  const [adjustingLeaveFor, setAdjustingLeaveFor] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     department: 'all',
     role: 'all',
     status: 'all', // Default to show all employees (active and inactive)
+    probationStatus: 'all', // Filter by probation status
+    employeeType: 'all', // Filter by employee type (onshore/offshore)
+    region: 'all', // Filter by region
   });
+  const [activeTab, setActiveTab] = useState<'all' | 'probation' | 'completed'>('all');
   const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
   const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
   const [showLeaveBalanceModal, setShowLeaveBalanceModal] = useState(false);
@@ -139,6 +149,9 @@ const EmployeesPage: React.FC = () => {
       if (filters.department !== 'all') queryParams.department = filters.department;
       if (filters.role !== 'all') queryParams.role = filters.role;
       if (filters.status !== 'all') queryParams.status = filters.status;
+      if (filters.probationStatus && filters.probationStatus !== 'all') queryParams.probationStatus = filters.probationStatus;
+      if (filters.employeeType && filters.employeeType !== 'all') queryParams.employeeType = filters.employeeType;
+      if (filters.region && filters.region !== 'all') queryParams.region = filters.region;
       
       console.log('🔍 EmployeesPage: Query params:', queryParams);
       
@@ -393,6 +406,23 @@ const EmployeesPage: React.FC = () => {
     setShowLeaveBalanceModal(true);
   };
 
+  // Calculate probation statistics
+  const probationStats = {
+    inProbation: employees.filter(emp => 
+      emp.role === 'employee' && 
+      (emp.probationStatus === 'active' || emp.probationStatus === 'extended')
+    ).length,
+    completed: employees.filter(emp => 
+      emp.role === 'employee' && emp.probationStatus === 'completed'
+    ).length,
+    terminated: employees.filter(emp => 
+      emp.role === 'employee' && emp.probationStatus === 'terminated'
+    ).length,
+    noProbation: employees.filter(emp => 
+      emp.role === 'employee' && !emp.probationStatus
+    ).length,
+  };
+
   const filteredEmployees = (employees || []).filter(employee => {
     const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          employee.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -402,12 +432,19 @@ const EmployeesPage: React.FC = () => {
                          (filters.status === 'active' && employee.isActive) ||
                          (filters.status === 'inactive' && !employee.isActive);
     
-    const matches = matchesSearch && matchesDepartment && matchesRole && matchesStatus;
-    
-    // Debug logging for status filtering
-    if (filters.status !== 'all') {
-      console.log(`🔍 Employee ${employee.name}: isActive=${employee.isActive}, statusFilter=${filters.status}, matchesStatus=${matchesStatus}, matches=${matches}`);
+    // Filter by active tab (probation status)
+    let matchesProbationTab = true;
+    if (activeTab === 'probation') {
+      // Show employees in active or extended probation
+      matchesProbationTab = employee.role === 'employee' && 
+        (employee.probationStatus === 'active' || employee.probationStatus === 'extended');
+    } else if (activeTab === 'completed') {
+      // Show employees who completed probation
+      matchesProbationTab = employee.role === 'employee' && employee.probationStatus === 'completed';
     }
+    // 'all' tab shows everyone
+    
+    const matches = matchesSearch && matchesDepartment && matchesRole && matchesStatus && matchesProbationTab;
     
     return matches;
   });
@@ -443,7 +480,495 @@ const EmployeesPage: React.FC = () => {
     return colors[department as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  // Mock statistics
+  const getProbationStatusColor = (status?: string | null) => {
+    switch (status) {
+      case 'active':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'completed':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'extended':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'terminated':
+        return 'bg-red-100 text-red-800 border-red-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getProbationStatusLabel = (status?: string | null) => {
+    switch (status) {
+      case 'active':
+        return 'In Probation';
+      case 'completed':
+        return 'Probation Completed';
+      case 'extended':
+        return 'Probation Extended';
+      case 'terminated':
+        return 'Probation Terminated';
+      default:
+        return 'N/A';
+    }
+  };
+
+  const handleCompleteProbation = async (employeeId: string) => {
+    try {
+      await adminAPI.completeProbation(employeeId);
+      toast({
+        title: 'Success',
+        description: 'Employee probation completed successfully.',
+      });
+      fetchEmployees();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to complete probation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExtendProbation = async (employeeId: string, additionalDays: number) => {
+    try {
+      await adminAPI.extendProbation(employeeId, additionalDays);
+      toast({
+        title: 'Success',
+        description: `Probation extended by ${additionalDays} days.`,
+      });
+      fetchEmployees();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to extend probation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleTerminateProbation = async (employeeId: string) => {
+    const confirmed = await confirm({
+      title: 'Terminate Probation',
+      description: 'Are you sure you want to terminate this employee\'s probation? This will deactivate the employee.',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await adminAPI.terminateProbation(employeeId);
+      toast({
+        title: 'Success',
+        description: 'Employee probation terminated.',
+      });
+      fetchEmployees();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to terminate probation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Render employee table function
+  const renderEmployeeTable = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12" role="status" aria-live="polite" aria-label="Loading employees">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      );
+    }
+
+    if (filteredEmployees.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+          <div className="p-4 bg-slate-100 rounded-full mb-4">
+            <Users className="h-8 w-8 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No employees found</h3>
+          <p className="text-slate-600 mb-4">
+            {searchTerm || filters.department !== 'all' || filters.role !== 'all' || filters.status !== 'all'
+              ? 'Try adjusting your search or filters to find employees.'
+              : 'Get started by adding your first employee to the system.'
+            }
+          </p>
+          {!searchTerm && filters.department === 'all' && filters.role === 'all' && filters.status === 'all' && (
+            <Button
+              onClick={() => setShowForm(true)}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+              aria-label="Add first employee to the system"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add First Employee
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="overflow-x-auto" role="region" aria-label="Employee table with horizontal scroll">
+          <Table role="table" aria-label="Employee directory table">
+            <TableHeader role="rowgroup">
+              <TableRow className="border-slate-200/50" role="row">
+                <TableHead className="w-12" role="columnheader">
+                  <Checkbox
+                    checked={selectedEmployees.length === filteredEmployees.length && filteredEmployees.length > 0}
+                    onCheckedChange={handleSelectAll}
+                    className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                    aria-label="Select all employees"
+                  />
+                </TableHead>
+                <TableHead 
+                  className="font-semibold cursor-pointer hover:bg-slate-50"
+                  onClick={() => {
+                    const newOrder = sorting.sortBy === 'name' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'name', sortOrder: newOrder });
+                    fetchEmployees();
+                  }}
+                  role="columnheader"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && (() => {
+                    const newOrder = sorting.sortBy === 'name' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'name', sortOrder: newOrder });
+                    fetchEmployees();
+                  })()}
+                  aria-label="Sort by employee name"
+                >
+                  <div className="flex items-center gap-2">
+                    Employee
+                    {sorting.sortBy === 'name' && (
+                      <span className="text-xs">
+                        {sorting.sortOrder === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="font-semibold cursor-pointer hover:bg-slate-50"
+                  onClick={() => {
+                    const newOrder = sorting.sortBy === 'department' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'department', sortOrder: newOrder });
+                    fetchEmployees();
+                  }}
+                  role="columnheader"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && (() => {
+                    const newOrder = sorting.sortBy === 'department' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'department', sortOrder: newOrder });
+                    fetchEmployees();
+                  })()}
+                  aria-label="Sort by department"
+                >
+                  <div className="flex items-center gap-2">
+                    Department
+                    {sorting.sortBy === 'department' && (
+                      <span className="text-xs">
+                        {sorting.sortOrder === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="font-semibold cursor-pointer hover:bg-slate-50"
+                  onClick={() => {
+                    const newOrder = sorting.sortBy === 'role' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'role', sortOrder: newOrder });
+                    fetchEmployees();
+                  }}
+                  role="columnheader"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && (() => {
+                    const newOrder = sorting.sortBy === 'role' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
+                    setSorting({ sortBy: 'role', sortOrder: newOrder });
+                    fetchEmployees();
+                  })()}
+                  aria-label="Sort by role"
+                >
+                  <div className="flex items-center gap-2">
+                    Role
+                    {sorting.sortBy === 'role' && (
+                      <span className="text-xs">
+                        {sorting.sortOrder === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead className="font-semibold" role="columnheader">Status</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Probation</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Leave Balance</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Contact</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody role="rowgroup">
+              {filteredEmployees.map((employee, index) => (
+                <TableRow 
+                  key={employee.id} 
+                  className="group hover:bg-slate-50/50 transition-colors duration-200"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                  role="row"
+                  aria-label={`Employee: ${employee.name}`}
+                >
+                  <TableCell role="cell">
+                    <Checkbox
+                      checked={selectedEmployees.includes(employee.id)}
+                      onCheckedChange={(checked) => handleSelectEmployee(employee.id, checked as boolean)}
+                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                      aria-label={`Select ${employee.name}`}
+                    />
+                  </TableCell>
+                  <TableCell role="cell">
+                    <div className="flex items-center space-x-3">
+                      <Avatar className="h-10 w-10 border-2 border-white shadow-sm" aria-label={`Avatar for ${employee.name}`}>
+                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold">
+                          {employee.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-semibold text-slate-900">{employee.name}</p>
+                        <p className="text-sm text-slate-500">ID: {employee.id.slice(0, 8)}...</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <Badge className={getDepartmentColor(employee.department || '')}>
+                      {employee.department}
+                    </Badge>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <Badge className={getRoleColor(employee.role)}>
+                      {employee.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <Badge className={getStatusColor(employee.isActive)}>
+                      {employee.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell role="cell">
+                    {employee.role === 'employee' ? (
+                      <div className="space-y-1">
+                        <Badge className={getProbationStatusColor(employee.probationStatus)}>
+                          {getProbationStatusLabel(employee.probationStatus)}
+                        </Badge>
+                        {employee.probationStatus === 'active' || employee.probationStatus === 'extended' ? (
+                          employee.probationEndDate && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Ends: {new Date(employee.probationEndDate).toLocaleDateString()}
+                            </p>
+                          )
+                        ) : employee.probationCompletedAt ? (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Completed: {new Date(employee.probationCompletedAt).toLocaleDateString()}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">N/A</span>
+                    )}
+                  </TableCell>
+                  <TableCell role="cell">
+                    <div className="w-48">
+                      {loadingBalances[employee.id] ? (
+                        <div className="flex items-center justify-center py-2" aria-label="Loading leave balance">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : leaveBalances[employee.id] ? (
+                        <LeaveBalanceOverviewCard 
+                          leaveBalance={{
+                            annual: {
+                              total: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.total || 0,
+                              used: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.used || 0,
+                              remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.remaining || 0
+                            },
+                            sick: {
+                              total: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.total || 0,
+                              used: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.used || 0,
+                              remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.remaining || 0
+                            },
+                            casual: {
+                              total: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.total || 0,
+                              used: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.used || 0,
+                              remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.remaining || 0
+                            },
+                            emergency: {
+                              total: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.total || 0,
+                              used: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.used || 0,
+                              remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.remaining || 0
+                            }
+                          }}
+                          title=""
+                          description=""
+                        />
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openLeaveBalanceModal(employee)}
+                          className="text-xs"
+                          aria-label={`View leave balance for ${employee.name}`}
+                        >
+                          View Balance
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-1 text-sm text-slate-600">
+                        <Mail className="h-3 w-3" aria-label="Email" />
+                        <span>{employee.email}</span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          className="h-8 w-8 p-0"
+                          aria-label={`Actions for ${employee.name}`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-white/95 backdrop-blur-sm border-white/20">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditingEmployee(employee);
+                            setShowForm(true);
+                          }}
+                          className="hover:bg-blue-50 hover:text-blue-700"
+                          aria-label={`Edit ${employee.name}`}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setAdjustingLeaveFor({ id: employee.id, name: employee.name });
+                          }}
+                          className="hover:bg-green-50 hover:text-green-700"
+                          aria-label={`Adjust leave balance for ${employee.name}`}
+                        >
+                          <Calendar className="mr-2 h-4 w-4" />
+                          Adjust Leave Balance
+                        </DropdownMenuItem>
+                        {employee.role === 'employee' && (employee.probationStatus === 'active' || employee.probationStatus === 'extended') && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => handleCompleteProbation(employee.id)}
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              Complete Probation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const days = prompt('Enter additional days to extend probation:');
+                                if (days && !isNaN(Number(days)) && Number(days) > 0) {
+                                  handleExtendProbation(employee.id, Number(days));
+                                }
+                              }}
+                            >
+                              <Clock className="mr-2 h-4 w-4" />
+                              Extend Probation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleTerminateProbation(employee.id)}
+                              className="text-red-600"
+                            >
+                              <XCircle className="mr-2 h-4 w-4" />
+                              Terminate Probation
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuItem
+                          onClick={() => handleToggleStatus(employee)}
+                          className="hover:bg-green-50 hover:text-green-700"
+                          aria-label={`${employee.isActive ? 'Deactivate' : 'Activate'} ${employee.name}`}
+                        >
+                          {employee.isActive ? (
+                            <>
+                              <UserX className="mr-2 h-4 w-4" />
+                              Deactivate
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="mr-2 h-4 w-4" />
+                              Activate
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination Controls */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <div className="text-sm text-slate-600" role="status" aria-live="polite">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.totalItems)} of {pagination.totalItems} employees
+            </div>
+            <div className="flex items-center gap-2" role="navigation" aria-label="Pagination">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPagination(prev => ({ ...prev, page: prev.page - 1 }));
+                  fetchEmployees();
+                }}
+                disabled={!pagination.hasPrev}
+                aria-label="Go to previous page"
+              >
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pagination.page === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setPagination(prev => ({ ...prev, page: pageNum }));
+                        fetchEmployees();
+                      }}
+                      className="w-8 h-8 p-0"
+                      aria-label={`Go to page ${pageNum}`}
+                      aria-current={pagination.page === pageNum ? "page" : undefined}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPagination(prev => ({ ...prev, page: prev.page + 1 }));
+                  fetchEmployees();
+                }}
+                disabled={!pagination.hasNext}
+                aria-label="Go to next page"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Statistics with probation data
   const stats = [
     {
       title: 'Total Employees',
@@ -462,19 +987,18 @@ const EmployeesPage: React.FC = () => {
       trend: { value: 8.3, isPositive: true },
     },
     {
-      title: 'Departments',
-      value: new Set(employees.map(emp => emp.department)).size,
-      description: 'Different teams',
-      icon: Building2,
-      color: 'bg-gradient-to-br from-purple-500 to-pink-600',
+      title: 'In Probation',
+      value: probationStats.inProbation,
+      description: 'Active/Extended probation',
+      icon: Clock,
+      color: 'bg-gradient-to-br from-yellow-500 to-orange-500',
     },
     {
-      title: 'New This Month',
-      value: 8,
-      description: 'Recent hires',
-      icon: TrendingUp,
-      color: 'bg-gradient-to-br from-amber-500 to-orange-500',
-      trend: { value: 15.2, isPositive: true },
+      title: 'Probation Completed',
+      value: probationStats.completed,
+      description: 'Completed probation',
+      icon: CheckCircle,
+      color: 'bg-gradient-to-br from-green-500 to-teal-600',
     },
   ];
 
@@ -694,362 +1218,81 @@ const EmployeesPage: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12" role="status" aria-live="polite" aria-label="Loading employees">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : filteredEmployees.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
-              <div className="p-4 bg-slate-100 rounded-full mb-4">
-                <Users className="h-8 w-8 text-slate-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-2">No employees found</h3>
-              <p className="text-slate-600 mb-4">
-                {searchTerm || filters.department !== 'all' || filters.role !== 'all' || filters.status !== 'all'
-                  ? 'Try adjusting your search or filters to find employees.'
-                  : 'Get started by adding your first employee to the system.'
-                }
-              </p>
-              {!searchTerm && filters.department === 'all' && filters.role === 'all' && filters.status === 'all' && (
-                <Button
-                  onClick={() => setShowForm(true)}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-                  aria-label="Add first employee to the system"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add First Employee
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto" role="region" aria-label="Employee table with horizontal scroll">
-              <Table role="table" aria-label="Employee directory table">
-                <TableHeader role="rowgroup">
-                  <TableRow className="border-slate-200/50" role="row">
-                    <TableHead className="w-12" role="columnheader">
-                      <Checkbox
-                        checked={selectedEmployees.length === filteredEmployees.length && filteredEmployees.length > 0}
-                        onCheckedChange={handleSelectAll}
-                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                        aria-label="Select all employees"
-                      />
-                    </TableHead>
-                    <TableHead 
-                      className="font-semibold cursor-pointer hover:bg-slate-50"
-                      onClick={() => {
-                        const newOrder = sorting.sortBy === 'name' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'name', sortOrder: newOrder });
-                        fetchEmployees();
-                      }}
-                      role="columnheader"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && (() => {
-                        const newOrder = sorting.sortBy === 'name' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'name', sortOrder: newOrder });
-                        fetchEmployees();
-                      })()}
-                      aria-label="Sort by employee name"
-                    >
-                      <div className="flex items-center gap-2">
-                        Employee
-                        {sorting.sortBy === 'name' && (
-                          <span className="text-xs">
-                            {sorting.sortOrder === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </div>
-                    </TableHead>
-                    <TableHead 
-                      className="font-semibold cursor-pointer hover:bg-slate-50"
-                      onClick={() => {
-                        const newOrder = sorting.sortBy === 'department' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'department', sortOrder: newOrder });
-                        fetchEmployees();
-                      }}
-                      role="columnheader"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && (() => {
-                        const newOrder = sorting.sortBy === 'department' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'department', sortOrder: newOrder });
-                        fetchEmployees();
-                      })()}
-                      aria-label="Sort by department"
-                    >
-                      <div className="flex items-center gap-2">
-                        Department
-                        {sorting.sortBy === 'department' && (
-                          <span className="text-xs">
-                            {sorting.sortOrder === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </div>
-                    </TableHead>
-                    <TableHead 
-                      className="font-semibold cursor-pointer hover:bg-slate-50"
-                      onClick={() => {
-                        const newOrder = sorting.sortBy === 'role' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'role', sortOrder: newOrder });
-                        fetchEmployees();
-                      }}
-                      role="columnheader"
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && (() => {
-                        const newOrder = sorting.sortBy === 'role' && sorting.sortOrder === 'asc' ? 'desc' : 'asc';
-                        setSorting({ sortBy: 'role', sortOrder: newOrder });
-                        fetchEmployees();
-                      })()}
-                      aria-label="Sort by role"
-                    >
-                      <div className="flex items-center gap-2">
-                        Role
-                        {sorting.sortBy === 'role' && (
-                          <span className="text-xs">
-                            {sorting.sortOrder === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </div>
-                    </TableHead>
-                    <TableHead className="font-semibold" role="columnheader">Status</TableHead>
-                    <TableHead className="font-semibold" role="columnheader">Leave Balance</TableHead>
-                    <TableHead className="font-semibold" role="columnheader">Contact</TableHead>
-                    <TableHead className="font-semibold" role="columnheader">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody role="rowgroup">
-                  {filteredEmployees.map((employee, index) => (
-                    <TableRow 
-                      key={employee.id} 
-                      className="group hover:bg-slate-50/50 transition-colors duration-200"
-                      style={{ animationDelay: `${index * 50}ms` }}
-                      role="row"
-                      aria-label={`Employee: ${employee.name}`}
-                    >
-                      <TableCell role="cell">
-                        <Checkbox
-                          checked={selectedEmployees.includes(employee.id)}
-                          onCheckedChange={(checked) => handleSelectEmployee(employee.id, checked as boolean)}
-                          className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                          aria-label={`Select ${employee.name}`}
-                        />
-                      </TableCell>
-                      <TableCell role="cell">
-                        <div className="flex items-center space-x-3">
-                          <Avatar className="h-10 w-10 border-2 border-white shadow-sm" aria-label={`Avatar for ${employee.name}`}>
-                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold">
-                              {employee.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-semibold text-slate-900">{employee.name}</p>
-                            <p className="text-sm text-slate-500">ID: {employee.id.slice(0, 8)}...</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <Badge className={getDepartmentColor(employee.department || '')}>
-                          {employee.department}
-                        </Badge>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <Badge className={getRoleColor(employee.role)}>
-                          {employee.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <Badge className={getStatusColor(employee.isActive)}>
-                          {employee.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <div className="w-48">
-                          {loadingBalances[employee.id] ? (
-                            <div className="flex items-center justify-center py-2" aria-label="Loading leave balance">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                            </div>
-                          ) : leaveBalances[employee.id] ? (
-                            <LeaveBalanceOverviewCard 
-                              leaveBalance={{
-                                annual: {
-                                  total: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.total || 0,
-                                  used: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.used || 0,
-                                  remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.annual?.remaining || 0
-                                },
-                                sick: {
-                                  total: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.total || 0,
-                                  used: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.used || 0,
-                                  remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.sick?.remaining || 0
-                                },
-                                casual: {
-                                  total: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.total || 0,
-                                  used: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.used || 0,
-                                  remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.casual?.remaining || 0
-                                },
-                                emergency: {
-                                  total: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.total || 0,
-                                  used: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.used || 0,
-                                  remaining: (leaveBalances[employee.id] as any)?.leaveBalance?.emergency?.remaining || 0
-                                }
-                              }}
-                              title=""
-                              description=""
-                            />
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openLeaveBalanceModal(employee)}
-                              className="text-xs"
-                              aria-label={`View leave balance for ${employee.name}`}
-                            >
-                              View Balance
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-1 text-sm text-slate-600">
-                            <Mail className="h-3 w-3" aria-label="Email" />
-                            <span>{employee.email}</span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell role="cell">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              className="h-8 w-8 p-0"
-                              aria-label={`Actions for ${employee.name}`}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-white/95 backdrop-blur-sm border-white/20">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingEmployee(employee);
-                                setShowForm(true);
-                              }}
-                              className="hover:bg-blue-50 hover:text-blue-700"
-                              aria-label={`Edit ${employee.name}`}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleToggleStatus(employee)}
-                              className="hover:bg-green-50 hover:text-green-700"
-                              aria-label={`${employee.isActive ? 'Deactivate' : 'Activate'} ${employee.name}`}
-                            >
-                              {employee.isActive ? (
-                                <>
-                                  <UserX className="mr-2 h-4 w-4" />
-                                  Deactivate
-                                </>
-                              ) : (
-                                <>
-                                  <UserCheck className="mr-2 h-4 w-4" />
-                                  Activate
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'all' | 'probation' | 'completed')} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsTrigger value="all" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                All Employees
+                <Badge variant="secondary" className="ml-2">{employees.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="probation" className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                In Probation
+                <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800">
+                  {probationStats.inProbation}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Completed Probation
+                <Badge variant="secondary" className="ml-2 bg-green-100 text-green-800">
+                  {probationStats.completed}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Pagination Controls */}
-          {pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-slate-600" role="status" aria-live="polite">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.totalItems)} of {pagination.totalItems} employees
-              </div>
-              <div className="flex items-center gap-2" role="navigation" aria-label="Pagination">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setPagination(prev => ({ ...prev, page: prev.page - 1 }));
-                    fetchEmployees();
-                  }}
-                  disabled={!pagination.hasPrev}
-                  aria-label="Go to previous page"
-                >
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                    const pageNum = i + 1;
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={pagination.page === pageNum ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setPagination(prev => ({ ...prev, page: pageNum }));
-                          fetchEmployees();
-                        }}
-                        className="w-8 h-8 p-0"
-                        aria-label={`Go to page ${pageNum}`}
-                        aria-current={pagination.page === pageNum ? "page" : undefined}
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
+            <TabsContent value="all" className="mt-0">
+              {renderEmployeeTable()}
+            </TabsContent>
+
+            <TabsContent value="probation" className="mt-0">
+              {filteredEmployees.length === 0 && !loading ? (
+                <div className="text-center py-12">
+                  <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Employees in Probation</h3>
+                  <p className="text-muted-foreground">All employees have completed their probation period.</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setPagination(prev => ({ ...prev, page: prev.page + 1 }));
-                    fetchEmployees();
-                  }}
-                  disabled={!pagination.hasNext}
-                  aria-label="Go to next page"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
+              ) : (
+                <>
+                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="h-5 w-5 text-yellow-600" />
+                      <h3 className="font-semibold text-yellow-900">Employees in Probation</h3>
+                    </div>
+                    <p className="text-sm text-yellow-800">
+                      These employees are currently in their probation period. Monitor their performance and complete probation when ready.
+                    </p>
+                  </div>
+                  {renderEmployeeTable()}
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="completed" className="mt-0">
+              {filteredEmployees.length === 0 && !loading ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Completed Probations</h3>
+                  <p className="text-muted-foreground">No employees have completed their probation period yet.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <h3 className="font-semibold text-green-900">Probation Completed</h3>
+                    </div>
+                    <p className="text-sm text-green-800">
+                      These employees have successfully completed their probation period and are now permanent employees.
+                    </p>
+                  </div>
+                  {renderEmployeeTable()}
+                </>
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
-
-      {/* Employee Form Modal */}
-      {showForm && (
-        <EmployeeForm
-          employee={editingEmployee}
-          onClose={() => {
-            setShowForm(false);
-            setEditingEmployee(null);
-          }}
-          onSuccess={() => {
-            setShowForm(false);
-            setEditingEmployee(null);
-            fetchEmployees();
-          }}
-          aria-label={editingEmployee ? "Edit employee form" : "Add new employee form"}
-        />
-      )}
-
-      {/* Leave Balance Modal */}
-      <LeaveBalanceModal
-        isOpen={showLeaveBalanceModal}
-        onClose={() => {
-          setShowLeaveBalanceModal(false);
-          setSelectedEmployee(null);
-        }}
-        userId={selectedEmployee?.id}
-        userName={selectedEmployee?.name}
-        aria-label="Employee leave balance details"
-      />
         </div>
       </div>
     </div>

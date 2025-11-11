@@ -1,4 +1,12 @@
-// API utility functions for authenticated requests
+// ⚠️ DEPRECATED: This file has been refactored into modular API files
+// Please use: import { boardAPI, workspaceAPI, ... } from '@/lib/api'
+// The new structure is in lib/api/ directory
+// This file is kept for backward compatibility but will be removed in future versions
+
+// Re-export from the new modular structure
+export * from './api/index';
+
+// API utility functions for authenticated requests (legacy code below)
 import { User } from '../types/auth';
 
 import { LeaveRequest, LeaveBalance, LeavePolicy, LeaveType, LeaveStatus, AuditLog } from '../types/leave';
@@ -98,23 +106,75 @@ const getAuthToken = (): string | null => {
 // Request queue to prevent multiple simultaneous requests
 const requestQueue = new Map<string, Promise<unknown>>();
 
-// Make authenticated API request with retry logic
+// Make authenticated API request with retry logic and offline support
 export const apiRequest = async <T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> => {
   const token = getAuthToken();
+  const method = (options.method || 'GET').toUpperCase();
+  const isWriteOperation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+  const isOffline = !navigator.onLine;
   
   // Create a unique key for this request
-  const requestKey = `${options.method || 'GET'}:${endpoint}`;
+  const requestKey = `${method}:${endpoint}`;
   
   // If the same request is already in progress, return the existing promise
   if (requestQueue.has(requestKey)) {
-    console.log(`🔄 Request already in progress: ${requestKey}`);
     return requestQueue.get(requestKey) as Promise<T>;
   }
   
   const makeRequest = async (): Promise<T> => {
+    // Handle offline mode
+    if (isOffline) {
+      if (isWriteOperation) {
+        // Queue write operations
+        const { actionQueue, ActionType } = await import('../services/actionQueue');
+        
+        // Determine action type from endpoint
+        let actionType = ActionType.UPDATE_ITEM;
+        if (endpoint.includes('/items') && method === 'POST') {
+          actionType = ActionType.CREATE_ITEM;
+        } else if (endpoint.includes('/items') && method === 'DELETE') {
+          actionType = ActionType.DELETE_ITEM;
+        } else if (endpoint.includes('/comments') && method === 'POST') {
+          actionType = ActionType.CREATE_COMMENT;
+        } else if (endpoint.includes('/approvals') && method === 'POST') {
+          actionType = ActionType.SUBMIT_APPROVAL;
+        } else if (endpoint.includes('/status') || endpoint.includes('/items') && method === 'PUT') {
+          actionType = ActionType.UPDATE_STATUS;
+        }
+        
+        const queueId = await actionQueue.enqueue({
+          type: actionType,
+          endpoint,
+          method: method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+          body: options.body ? JSON.parse(options.body as string) : undefined,
+          headers: options.headers as Record<string, string>,
+        });
+        
+        // Return a mock response indicating the action was queued
+        return {
+          success: true,
+          message: 'Action queued for sync when online',
+          data: { queueId, queued: true },
+        } as T;
+      } else {
+        // Try to get from cache for read operations
+        const { offlineCache } = await import('../services/offlineCache');
+        const cached = await offlineCache.get<T>(requestKey);
+        
+        if (cached) {
+          console.log(`[Offline] Serving cached data for ${endpoint}`);
+          return cached;
+        }
+        
+        // No cache available - throw error
+        throw new Error('No cached data available and you are offline');
+      }
+    }
+
+    // Continue with normal request when online
     const config: RequestInit = {
       ...options,
       headers: {
@@ -124,34 +184,74 @@ export const apiRequest = async <T = unknown>(
       },
     };
 
-    console.log(`🌐 API Request: ${config.method || 'GET'} ${API_BASE_URL}${endpoint}`);
-    console.log(`🔑 Token: ${token ? token.substring(0, 20) + '...' : 'No token'}`);
+    // Debug logs disabled in production; keep silent by default
 
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
       
+      // Handle connection errors more gracefully
       if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired or invalid, clear auth data
+        if (response.status === 401 || response.status === 403) {
+          // Token expired, invalid, or forbidden - clear auth data and redirect to login
           localStorage.removeItem('user');
           localStorage.removeItem('token');
           window.location.href = '/login';
+          // Return a rejected promise to stop further processing
+          return Promise.reject(new Error('Authentication required'));
         }
         
         if (response.status === 429) {
           // Rate limited - wait and retry once
-          console.log('⏳ Rate limited, waiting 2 seconds before retry...');
+          // silent retry
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, config);
           if (!retryResponse.ok) {
-            const errorData = await retryResponse.json().catch(() => ({}));
-            throw new Error(errorData.message || errorData.error || `HTTP error! status: ${retryResponse.status}`);
+            const retryErrorData = await retryResponse.json().catch(() => ({}));
+            let retryErrorMessage = 'An error occurred';
+            if (retryErrorData.error) {
+              retryErrorMessage = typeof retryErrorData.error === 'string' 
+                ? retryErrorData.error 
+                : retryErrorData.error?.message || JSON.stringify(retryErrorData.error);
+            } else if (retryErrorData.message) {
+              retryErrorMessage = retryErrorData.message;
+            }
+            throw new Error(retryErrorMessage || `HTTP error! status: ${retryResponse.status}`);
           }
           return retryResponse.json();
         }
         
         const errorData = await response.json().catch(() => ({}));
+        
+        // Extract error message from nested structure
+        let errorMessage = 'An error occurred';
+        if (errorData.error) {
+          if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else if (errorData.error.message) {
+            errorMessage = errorData.error.message;
+          } else if (typeof errorData.error === 'object') {
+            errorMessage = JSON.stringify(errorData.error);
+          }
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+        
+        // Log error details in development
+        if (import.meta.env.DEV) {
+          console.error('API Error Response:', {
+            status: response.status,
+            endpoint,
+            error: errorMessage,
+            details: errorData.details,
+          });
+        }
+        
+        // For 409 Conflict (like duplicate leave types), return the response instead of throwing
+        if (response.status === 409) {
+          // return conflict payload to caller
+          return errorData;
+        }
         
         // For validation errors, include the details
         if (response.status === 400 && errorData.details) {
@@ -159,12 +259,34 @@ export const apiRequest = async <T = unknown>(
           throw new Error(`${errorData.message || 'Validation failed'} - ${validationDetails}`);
         }
         
-        throw new Error(errorData.message || errorData.error || `HTTP error! status: ${response.status}`);
+        // For 500 errors, show the actual error message from backend
+        throw new Error(errorMessage || `HTTP error! status: ${response.status}`);
       }
 
       const responseData = await response.json();
-      console.log(`✅ API Response: ${response.status} ${endpoint}`, responseData);
+      
+      // Cache successful GET responses
+      if (method === 'GET' && response.ok) {
+        try {
+          const { offlineCache } = await import('../services/offlineCache');
+          // Cache for 5 minutes
+          await offlineCache.set(requestKey, responseData, 5 * 60 * 1000);
+        } catch (error) {
+          console.warn('Failed to cache response:', error);
+        }
+      }
+      
       return responseData;
+    } catch (error) {
+      // Network errors (connection refused, timeout, etc.)
+      if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+        const friendlyError = new Error('Backend server is not running. Please start it with: cd backend-ezifycloud && npm run dev');
+        (friendlyError as any).isConnectionError = true;
+        (friendlyError as any).originalError = error;
+        console.error('❌ Connection Error:', friendlyError.message);
+        throw friendlyError;
+      }
+      throw error;
     } finally {
       // Remove from queue when done
       requestQueue.delete(requestKey);
@@ -733,4 +855,1252 @@ export const employeeAPI = {
   getLeavePolicyStats: (): Promise<ApiResponse<{ totalPolicies: number; activePolicies: number; inactivePolicies: number; byLeaveType: Record<string, number> }>> => 
     apiRequest('/employee/policies/stats'),
   getLeavePolicyTypes: (): Promise<ApiResponse<string[]>> => apiRequest('/employee/policies/types'),
+};
+
+// Workspace API endpoints
+export const workspaceAPI = {
+  // Workspace CRUD
+  createWorkspace: (data: { name: string; description?: string; logo?: string; settings?: Record<string, unknown> }): Promise<ApiResponse<{ workspace: unknown; member: unknown }>> => {
+    // Clean the data before sending - remove undefined and empty string logo
+    const cleanedData: Record<string, unknown> = {
+      name: data.name,
+    };
+    if (data.description !== undefined && data.description !== '') {
+      cleanedData.description = data.description;
+    }
+    if (data.logo !== undefined && data.logo !== '') {
+      cleanedData.logo = data.logo;
+    }
+    if (data.settings) {
+      cleanedData.settings = data.settings;
+    }
+    console.log('🔍 API: Sending workspace data:', cleanedData);
+    return apiRequest('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify(cleanedData),
+    });
+  },
+  getWorkspaces: (params?: { page?: number; limit?: number; search?: string }): Promise<ApiResponse<PaginatedResponse<unknown>>> => {
+    const queryParams = new URLSearchParams();
+    if (params) {
+      if (params.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
+      if (params.search !== undefined && params.search !== null && params.search !== '') {
+        queryParams.append('search', params.search);
+      }
+    }
+    const queryString = queryParams.toString();
+    return apiRequest(`/workspaces${queryString ? '?' + queryString : ''}`);
+  },
+  /**
+   * Get all workspaces for the current user (alias for getWorkspaces)
+   */
+  getUserWorkspaces: (params?: { page?: number; limit?: number; search?: string }): Promise<ApiResponse<PaginatedResponse<unknown>>> => {
+    return workspaceAPI.getWorkspaces(params);
+  },
+  getWorkspaceById: (id: string): Promise<ApiResponse<unknown>> => apiRequest(`/workspaces/${id}`),
+  updateWorkspace: (id: string, data: { name?: string; description?: string; logo?: string; settings?: Record<string, unknown> }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/workspaces/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteWorkspace: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/${id}`, {
+      method: 'DELETE',
+    }),
+  
+  // Member management
+  getWorkspaceMembers: (workspaceId: string): Promise<ApiResponse<unknown[]>> => apiRequest(`/workspaces/${workspaceId}/members`),
+  getInvitations: (workspaceId: string, status: 'pending' | 'accepted' | 'all' = 'pending'): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/workspaces/${workspaceId}/invitations${status ? `?status=${status}` : ''}`),
+  transferOwnership: (workspaceId: string, newOwnerUserId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/${workspaceId}/members/transfer-ownership`, {
+      method: 'POST',
+      body: JSON.stringify({ newOwnerUserId }),
+    }),
+  inviteMember: (workspaceId: string, data: { email: string; role: string }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/workspaces/${workspaceId}/members/invite`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  resendInvitation: (workspaceId: string, inviteId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/${workspaceId}/invitations/${inviteId}/resend`, { method: 'POST' }),
+  cancelInvitation: (workspaceId: string, inviteId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/${workspaceId}/invitations/${inviteId}`, { method: 'DELETE' }),
+  updateMemberRole: (workspaceId: string, memberId: string, role: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/workspaces/${workspaceId}/members/${memberId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    }),
+  removeMember: (workspaceId: string, memberId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: 'DELETE',
+    }),
+  acceptInvitation: (token: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/workspaces/invitations/${token}/accept`, {
+      method: 'POST',
+    }),
+};
+
+// Board API endpoints
+export const boardAPI = {
+  // Board CRUD
+  createBoard: (data: { workspaceId: string; name: string; type: string; description?: string; color?: string; icon?: string }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/boards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getWorkspaceBoards: (workspaceId: string, params?: { page?: number; limit?: number; search?: string; type?: string; isArchived?: boolean }): Promise<ApiResponse<PaginatedResponse<unknown>>> =>
+    apiRequest(`/boards/workspace/${workspaceId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getBoardById: (id: string): Promise<ApiResponse<unknown>> => apiRequest(`/boards/${id}`),
+  updateBoard: (id: string, data: { name?: string; description?: string; color?: string; icon?: string; isPublic?: boolean; isArchived?: boolean }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/boards/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteBoard: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/boards/${id}`, {
+      method: 'DELETE',
+    }),
+  
+  // Column management
+  getBoardColumns: (boardId: string): Promise<ApiResponse<unknown[]>> => apiRequest(`/boards/${boardId}/columns`),
+  createColumn: (boardId: string, data: { name: string; type: string; position?: number; width?: number; required?: boolean; settings?: Record<string, unknown> }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/boards/${boardId}/columns`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateColumn: (id: string, data: { name?: string; type?: string; position?: number; width?: number; required?: boolean; isHidden?: boolean; settings?: Record<string, unknown> }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/boards/columns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteColumn: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/boards/columns/${id}`, {
+      method: 'DELETE',
+    }),
+  
+  // Item management
+  getBoardItems: (boardId: string, params?: { page?: number; limit?: number; search?: string; status?: string; sortBy?: string; sortOrder?: string }): Promise<ApiResponse<PaginatedResponse<unknown>>> =>
+    apiRequest(`/boards/${boardId}/items${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  createItem: (boardId: string, data: { name: string; status?: string; cells?: Record<string, unknown> }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/boards/${boardId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateItem: (id: string, data: { name?: string; status?: string; cells?: Record<string, unknown> }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/boards/items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteItem: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/boards/items/${id}`, {
+      method: 'DELETE',
+    }),
+  getItemActivities: (itemId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<{ activities: unknown[]; total: number }>> => {
+    const queryParams = new URLSearchParams();
+    if (params) {
+      if (params.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    }
+    const queryString = queryParams.toString();
+    return apiRequest(`/boards/items/${itemId}/activities${queryString ? '?' + queryString : ''}`);
+  },
+};
+
+export const commentAPI = {
+  // Create comment
+  createComment: (data: { itemId: string; content: string; mentions?: string[]; isPrivate?: boolean; parentId?: string }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/comments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  // Get comments for an item
+  getItemComments: (itemId: string, params?: { parentId?: string | null; includeDeleted?: boolean }): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/comments/item/${itemId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  
+  // Get comment by ID
+  getCommentById: (commentId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/comments/${commentId}`),
+  
+  // Update comment
+  updateComment: (commentId: string, data: { content?: string; mentions?: string[]; isPrivate?: boolean }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/comments/${commentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  // Delete comment
+  deleteComment: (commentId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/comments/${commentId}`, {
+      method: 'DELETE',
+    }),
+  
+  // Add reaction
+  addReaction: (commentId: string, emoji: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/comments/${commentId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }),
+};
+
+export const automationAPI = {
+  // Create automation
+  createAutomation: (data: {
+    boardId: string;
+    name: string;
+    trigger: Record<string, unknown>;
+    actions: Array<Record<string, unknown>>;
+    conditions?: Record<string, unknown>;
+    isActive?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/automations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get automations
+  getAutomations: (params?: {
+    boardId?: string;
+    isActive?: boolean;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<{ data: unknown[]; pagination: PaginatedResponse<unknown> }>> => {
+    const query = new URLSearchParams();
+    if (params?.boardId) query.append('boardId', params.boardId);
+    if (typeof params?.isActive === 'boolean') query.append('isActive', String(params.isActive));
+    if (params?.search && params.search.trim() !== '') query.append('search', params.search.trim());
+    if (typeof params?.page === 'number') query.append('page', String(params.page));
+    if (typeof params?.limit === 'number') query.append('limit', String(params.limit));
+    const qs = query.toString();
+    return apiRequest(`/automations${qs ? `?${qs}` : ''}`);
+  },
+
+  // Get automation by ID
+  getAutomationById: (id: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/automations/${id}`),
+
+  // Update automation
+  updateAutomation: (id: string, data: {
+    name?: string;
+    trigger?: Record<string, unknown>;
+    actions?: Array<Record<string, unknown>>;
+    conditions?: Record<string, unknown>;
+    isActive?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/automations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete automation
+  deleteAutomation: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/automations/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Toggle automation
+  toggleAutomation: (id: string, isActive: boolean): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/automations/${id}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    }),
+
+  // Test automation
+  testAutomation: (id: string, itemId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/automations/${id}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ itemId }),
+    }),
+};
+
+export const aiAPI = {
+  // Generate text (description, comment, email, summary)
+  generateText: (data: {
+    type: 'description' | 'comment' | 'email' | 'summary';
+    context?: Record<string, unknown>;
+  }): Promise<ApiResponse<{ text: string; confidence?: number; metadata?: Record<string, unknown> }>> =>
+    apiRequest('/ai/generate-text', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Smart semantic search
+  smartSearch: (data: {
+    query: string;
+    boardId?: string;
+    workspaceId?: string;
+    limit?: number;
+    filters?: Record<string, unknown>;
+  }): Promise<ApiResponse<{
+    results: Array<{
+      itemId: string;
+      itemName: string;
+      relevanceScore: number;
+      matchedFields: string[];
+    }>;
+    queryInterpretation?: string;
+    suggestedFilters?: Record<string, unknown>;
+  }>> =>
+    apiRequest('/ai/smart-search', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Generate predictions
+  generatePrediction: (data: {
+    type: 'payment_delay' | 'approval_time' | 'risk_score';
+    itemId?: string;
+    itemData?: Record<string, unknown>;
+  }): Promise<ApiResponse<{
+    prediction: number | string;
+    confidence: number;
+    factors?: Array<{ factor: string; impact: number }>;
+    recommendation?: string;
+  }>> =>
+    apiRequest('/ai/predict', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Generate insights
+  generateInsights: (data: {
+    type: 'board_summary' | 'team_insights' | 'trends';
+    boardId?: string;
+    workspaceId?: string;
+    timeframe?: 'week' | 'month' | 'quarter' | 'year';
+  }): Promise<ApiResponse<{
+    summary: string;
+    metrics?: Array<{ label: string; value: string | number }>;
+    trends?: Array<{ label: string; description: string; direction: string }>;
+    insights?: string[];
+  }>> =>
+    apiRequest('/ai/insights', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Auto-tagging
+  autoTagging: (data: {
+    itemId: string;
+    boardId?: string;
+    context?: {
+      itemName?: string;
+      description?: string;
+      lineItems?: Array<{
+        name?: string;
+        description?: string;
+        quantity?: number;
+        price?: number;
+        unitPrice?: number;
+      }>;
+      amount?: number;
+      existingTags?: string[];
+      existingCategory?: string;
+    };
+  }): Promise<ApiResponse<{
+    tags: string[];
+    category?: string;
+    confidence: number;
+    suggestions?: Array<{
+      tag: string;
+      reason: string;
+      confidence: number;
+    }>;
+    groupingSuggestions?: Array<{
+      groupName: string;
+      items: string[];
+      reason: string;
+    }>;
+  }>> =>
+    apiRequest('/ai/auto-tagging', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Formula suggestions
+  suggestFormulas: (data: {
+    itemId?: string;
+    boardId: string;
+    context?: {
+      lineItems?: Array<{
+        quantity?: number;
+        price?: number;
+        unitPrice?: number;
+        tax?: number;
+      }>;
+      subtotal?: number;
+      amount?: number;
+      taxRate?: number;
+      discount?: number;
+      existingFormulas?: Record<string, string>;
+    };
+    type?: 'total' | 'tax' | 'discount' | 'subtotal' | 'custom';
+  }): Promise<ApiResponse<{
+    suggestions: Array<{
+      name: string;
+      formula: string;
+      description: string;
+      targetColumn?: string;
+      confidence: number;
+      validation?: {
+        isValid: boolean;
+        errors?: string[];
+        preview?: number;
+      };
+    }>;
+    taxSuggestions?: Array<{
+      rate: number;
+      type: 'percentage' | 'flat';
+      description: string;
+      calculatedAmount?: number;
+      basedOn?: string;
+    }>;
+  }>> =>
+    apiRequest('/ai/suggest-formulas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Email draft generation
+  generateEmailDraft: (data: {
+    itemId?: string;
+    type?: 'invoice' | 'reminder' | 'payment_confirmation' | 'general';
+    context?: {
+      itemName?: string;
+      recipientName?: string;
+      recipientEmail?: string;
+      amount?: number;
+      dueDate?: string;
+      invoiceNumber?: string;
+      lineItems?: Array<{
+        name?: string;
+        description?: string;
+        quantity?: number;
+        price?: number;
+        unitPrice?: number;
+      }>;
+      status?: string;
+      notes?: string;
+      tone?: 'professional' | 'friendly' | 'formal' | 'casual';
+    };
+  }): Promise<ApiResponse<{
+    subject: string;
+    body: string;
+    tone: 'professional' | 'friendly' | 'formal' | 'casual';
+    includesInvoiceDetails: boolean;
+    suggestions?: string[];
+  }>> =>
+    apiRequest('/ai/email-draft', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const fileAPI = {
+  // Upload file (base64)
+  uploadFile: (data: { 
+    itemId: string; 
+    fileName: string; 
+    fileData: string; 
+    mimeType: string; 
+    fileSize: number;
+    folder?: string;
+    replaceFileId?: string; // For versioning
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/files/upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  // Get allowed file types configuration
+  getAllowedFileTypes: (): Promise<ApiResponse<{
+    allowedTypes: Record<string, {
+      mimeTypes: string[];
+      extensions: string[];
+      maxSize: number;
+    }>;
+    globalMaxSize: number;
+    enabledCategories: Record<string, boolean>;
+  }>> =>
+    apiRequest('/files/allowed-types'),
+  
+  // Get files for an item
+  getItemFiles: (itemId: string, filters?: { folder?: string | null; includeVersions?: boolean }): Promise<ApiResponse<unknown[]>> => {
+    const params = new URLSearchParams();
+    if (filters?.folder !== undefined) {
+      params.append('folder', filters.folder || '');
+    }
+    if (filters?.includeVersions) {
+      params.append('includeVersions', 'true');
+    }
+    const query = params.toString();
+    return apiRequest(`/files/item/${itemId}${query ? `?${query}` : ''}`);
+  },
+  
+  // Get files by folder
+  getFilesByFolder: (itemId: string, folder?: string): Promise<ApiResponse<unknown[]>> => {
+    const params = new URLSearchParams();
+    if (folder) {
+      params.append('folder', folder);
+    }
+    const query = params.toString();
+    return apiRequest(`/files/item/${itemId}/folder${query ? `?${query}` : ''}`);
+  },
+  
+  // Get folder structure
+  getFolderStructure: (itemId: string): Promise<ApiResponse<string[]>> =>
+    apiRequest(`/files/item/${itemId}/folders`),
+  
+  // Get file versions
+  getFileVersions: (fileId: string): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/files/${fileId}/versions`),
+  
+  // Get file by ID
+  getFileById: (fileId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/files/${fileId}`),
+  
+  // Download file
+  downloadFile: (fileId: string): Promise<Blob> => {
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9001/api';
+    const token = localStorage.getItem('token');
+    return fetch(`${API_BASE_URL}/files/${fileId}/download`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error('Failed to download file');
+      }
+      return response.blob();
+    });
+  },
+  
+  // Delete file
+  deleteFile: (fileId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/files/${fileId}`, {
+      method: 'DELETE',
+    }),
+  
+  // Get file preview URL
+  getFilePreviewUrl: (fileId: string): string => {
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9001/api';
+    const token = localStorage.getItem('token');
+    return `${API_BASE_URL}/files/${fileId}/download?token=${token}`;
+  },
+
+  // Rename file
+  renameFile: (fileId: string, newFileName: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/files/${fileId}/rename`, {
+      method: 'PATCH',
+      body: JSON.stringify({ newFileName }),
+    }),
+
+  // Move file to another item
+  moveFile: (fileId: string, targetItemId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/files/${fileId}/move`, {
+      method: 'PATCH',
+      body: JSON.stringify({ targetItemId }),
+    }),
+
+  // Bulk download - get files list
+  getFilesForBulkDownload: (itemIds: string[]): Promise<ApiResponse<unknown[]>> =>
+    apiRequest('/files/bulk-download', {
+      method: 'POST',
+      body: JSON.stringify({ itemIds }),
+    }),
+
+  // Replace file (upload new version)
+  replaceFile: (fileId: string, file: File, folder?: string): Promise<ApiResponse<unknown>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (folder) {
+      formData.append('folder', folder);
+    }
+    formData.append('replaceFileId', fileId);
+
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9001/api';
+    const token = localStorage.getItem('token');
+    
+    return fetch(`${API_BASE_URL}/files/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    }).then(response => response.json());
+  },
+};
+
+// Audit API endpoints
+export const auditAPI = {
+  getAuditLogs: (params?: {
+    userId?: string;
+    action?: string;
+    targetType?: string;
+    targetId?: string;
+    resourceType?: string;
+    resourceId?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+    itemId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    fieldName?: string;
+  }): Promise<ApiResponse<{ logs: unknown[]; total: number; page: number; limit: number; totalPages: number }>> =>
+    apiRequest(`/audit${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getResourceAuditLogs: (resourceType: string, resourceId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<{ logs: unknown[]; total: number; page: number; limit: number; totalPages: number }>> =>
+    apiRequest(`/audit/resource/${resourceType}/${resourceId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getTargetAuditLogs: (targetType: string, targetId: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<{ logs: unknown[]; total: number; page: number; limit: number; totalPages: number }>> =>
+    apiRequest(`/audit/target/${targetType}/${targetId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getFieldHistory: (itemId: string, fieldName: string): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/audit/field/${itemId}/${fieldName}`),
+  exportAuditLogs: (params?: {
+    format?: 'csv' | 'json';
+    userId?: string;
+    action?: string;
+    targetType?: string;
+    targetId?: string;
+    resourceType?: string;
+    resourceId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<Blob> => {
+    const queryParams = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    return fetch(`${API_BASE_URL}/audit/export${queryParams}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+    }).then(res => res.blob());
+  },
+};
+
+// Backup API endpoints
+export const backupAPI = {
+  createDatabaseBackup: (): Promise<ApiResponse<{ file: string; timestamp: string }>> =>
+    apiRequest('/backup/database', { method: 'POST' }),
+  createFilesBackup: (): Promise<ApiResponse<{ file: string; timestamp: string }>> =>
+    apiRequest('/backup/files', { method: 'POST' }),
+  createDataExport: (): Promise<ApiResponse<{ file: string; timestamp: string }>> =>
+    apiRequest('/backup/export', { method: 'POST' }),
+  listBackups: (type?: 'database' | 'files' | 'data'): Promise<ApiResponse<{ backups: string[]; count: number }>> =>
+    apiRequest(`/backup/list${type ? `?type=${type}` : ''}`),
+  cleanupBackups: (type?: 'database' | 'files' | 'data', keepCount?: number): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/backup/cleanup${type || keepCount ? '?' + new URLSearchParams({ type: type || '', keepCount: keepCount?.toString() || '' }).toString() : ''}`, { method: 'POST' }),
+};
+
+export const permissionAPI = {
+  // Get permissions for a resource
+  getPermissions: (
+    resource: 'workspace' | 'board' | 'item' | 'column',
+    resourceId: string
+  ): Promise<ApiResponse<{
+    read: boolean;
+    write: boolean;
+    delete: boolean;
+    manage?: boolean;
+  }>> =>
+    apiRequest(`/permissions?resource=${resource}&resourceId=${resourceId}`),
+
+  // Check specific permission
+  checkPermission: (
+    resource: 'workspace' | 'board' | 'item' | 'column',
+    resourceId: string,
+    action: 'read' | 'write' | 'delete' | 'manage'
+  ): Promise<ApiResponse<{ hasPermission: boolean }>> =>
+    apiRequest(`/permissions/check?resource=${resource}&resourceId=${resourceId}&action=${action}`),
+
+  // Update board permissions
+  updateBoardPermissions: (
+    boardId: string,
+    permissions: Record<string, {
+      read: boolean;
+      write: boolean;
+      delete: boolean;
+      manage?: boolean;
+    }>
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/board/${boardId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  // Update column permissions
+  updateColumnPermissions: (
+    columnId: string,
+    permissions: {
+      read?: boolean | Record<string, boolean>;
+      write?: boolean | Record<string, boolean>;
+      delete?: boolean | Record<string, boolean>;
+    }
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/column/${columnId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  // Assign workspace role
+  assignWorkspaceRole: (
+    workspaceId: string,
+    targetUserId: string,
+    role: 'owner' | 'admin' | 'finance' | 'member' | 'viewer'
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/workspace/${workspaceId}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, role }),
+    }),
+
+  // Assign board role
+  assignBoardRole: (
+    boardId: string,
+    targetUserId: string,
+    role: 'owner' | 'admin' | 'editor' | 'viewer'
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/board/${boardId}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, role }),
+    }),
+
+  // Assign board permissions to user
+  assignBoardPermissionsToUser: (
+    boardId: string,
+    targetUserId: string,
+    permissions: {
+      read: boolean;
+      write: boolean;
+      delete: boolean;
+      manage?: boolean;
+    }
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/board/${boardId}/user/${targetUserId}`, {
+      method: 'POST',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  // Assign board permissions to role
+  assignBoardPermissionsToRole: (
+    boardId: string,
+    role: string,
+    permissions: {
+      read: boolean;
+      write: boolean;
+      delete: boolean;
+      manage?: boolean;
+    }
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/board/${boardId}/role/${role}`, {
+      method: 'POST',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  // Assign column role
+  assignColumnRole: (
+    columnId: string,
+    targetUserId: string,
+    role: 'owner' | 'editor' | 'viewer'
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/column/${columnId}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, role }),
+    }),
+
+  // Assign cell permissions
+  assignCellPermissions: (
+    columnId: string,
+    permissions: {
+      mode: 'owner_only' | 'assignee_only' | 'team_members' | 'all';
+      allowedUsers?: string[];
+      allowedRoles?: string[];
+    }
+  ): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/permissions/column/${columnId}/cell-permissions`, {
+      method: 'POST',
+      body: JSON.stringify({ permissions }),
+    }),
+
+  // Get effective permissions (with inheritance)
+  getEffectivePermissions: (
+    resource: 'workspace' | 'board' | 'column',
+    resourceId: string
+  ): Promise<ApiResponse<{
+    read: boolean;
+    write: boolean;
+    delete: boolean;
+    manage?: boolean;
+    inherited: boolean;
+    overrides: Record<string, boolean>;
+  }>> =>
+    apiRequest(`/permissions/effective?resource=${resource}&resourceId=${resourceId}`),
+
+  // Row-level security
+  getFilteredItems: (
+    boardId: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+      filterBy?: 'all' | 'assigned' | 'created' | 'department' | 'custom';
+      departmentId?: string;
+      customFilters?: Array<{
+        columnId: string;
+        operator?: 'equals' | 'contains' | 'greater_than' | 'less_than' | 'in';
+        value?: unknown;
+      }>;
+    }
+  ): Promise<ApiResponse<{
+    items: unknown[];
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    if (options?.status) params.append('status', options.status);
+    if (options?.filterBy) params.append('filterBy', options.filterBy);
+    if (options?.departmentId) params.append('departmentId', options.departmentId);
+    if (options?.customFilters) params.append('customFilters', JSON.stringify(options.customFilters));
+    return apiRequest(`/permissions/board/${boardId}/items/filtered?${params.toString()}`);
+  },
+
+  getAssignedItems: (
+    boardId: string,
+    options?: { page?: number; limit?: number }
+  ): Promise<ApiResponse<{
+    items: unknown[];
+    total: number;
+    page: number;
+    limit: number;
+  }>> => {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    return apiRequest(`/permissions/board/${boardId}/items/assigned?${params.toString()}`);
+  },
+
+  // Column visibility
+  getVisibleColumns: (
+    boardId: string,
+    itemId?: string
+  ): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    type: string;
+    canView: boolean;
+    isSensitive: boolean;
+    isHidden: boolean;
+  }>>> => {
+    const params = new URLSearchParams();
+    if (itemId) params.append('itemId', itemId);
+    return apiRequest(`/permissions/board/${boardId}/columns/visible?${params.toString()}`);
+  },
+
+  canViewColumn: (
+    columnId: string,
+    itemId?: string
+  ): Promise<ApiResponse<{ canView: boolean }>> => {
+    const params = new URLSearchParams();
+    if (itemId) params.append('itemId', itemId);
+    return apiRequest(`/permissions/column/${columnId}/visibility?${params.toString()}`);
+  },
+};
+
+
+export const dashboardAPI = {
+  // Create dashboard
+  createDashboard: (data: {
+    workspaceId: string;
+    name: string;
+    description?: string;
+    widgets?: unknown[];
+    isPublic?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/dashboards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get workspace dashboards
+  getWorkspaceDashboards: (workspaceId: string): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/dashboards/workspace/${workspaceId}`),
+
+  // Get dashboard by ID
+  getDashboardById: (dashboardId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/dashboards/${dashboardId}`),
+
+  // Update dashboard
+  updateDashboard: (dashboardId: string, data: {
+    name?: string;
+    description?: string;
+    widgets?: unknown[];
+    isPublic?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/dashboards/${dashboardId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete dashboard
+  deleteDashboard: (dashboardId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/dashboards/${dashboardId}`, {
+      method: 'DELETE',
+    }),
+
+  // Share dashboard
+  shareDashboard: (dashboardId: string, sharedWith: string[]): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/dashboards/${dashboardId}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ sharedWith }),
+    }),
+
+  // Get board metrics
+  getBoardMetrics: (boardId: string, filters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string[];
+  }): Promise<ApiResponse<{
+    totalItems: number;
+    totalValue: number;
+    averageValue: number;
+    itemsByStatus: Record<string, number>;
+    itemsByDate: Array<{ date: string; count: number; value: number }>;
+    topItems: Array<{ id: string; name: string; value: number }>;
+  }>> =>
+    apiRequest(`/dashboards/board/${boardId}/metrics${filters ? '?' + new URLSearchParams(filters as Record<string, string>).toString() : ''}`),
+
+  // Calculate widget data
+  calculateWidgetData: (widget: unknown): Promise<ApiResponse<unknown>> =>
+    apiRequest('/dashboards/widgets/calculate', {
+      method: 'POST',
+      body: JSON.stringify(widget),
+    }),
+};
+
+// Analytics API endpoints
+export const analyticsAPI = {
+  getKeyMetrics: (params?: {
+    workspaceId?: string;
+    boardId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string[];
+  }): Promise<ApiResponse<{
+    totalInvoices: number;
+    totalAmount: number;
+    pendingApprovalsCount: number;
+    overdueInvoicesCount: number;
+    averageApprovalTime: number;
+    paymentRate: number;
+  }>> =>
+    apiRequest(`/analytics/metrics${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getTrends: (params?: {
+    workspaceId?: string;
+    boardId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string[];
+  }): Promise<ApiResponse<{
+    invoiceVolume: Array<{ date: string; value: number }>;
+    amountTrends: Array<{ date: string; value: number }>;
+    approvalTimeTrends: Array<{ date: string; value: number }>;
+    paymentTrends: Array<{ date: string; value: number }>;
+  }>> =>
+    apiRequest(`/analytics/trends${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  getAnalytics: (params?: {
+    workspaceId?: string;
+    boardId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string[];
+  }): Promise<ApiResponse<{
+    keyMetrics: {
+      totalInvoices: number;
+      totalAmount: number;
+      pendingApprovalsCount: number;
+      overdueInvoicesCount: number;
+      averageApprovalTime: number;
+      paymentRate: number;
+    };
+    trends: {
+      invoiceVolume: Array<{ date: string; value: number }>;
+      amountTrends: Array<{ date: string; value: number }>;
+      approvalTimeTrends: Array<{ date: string; value: number }>;
+      paymentTrends: Array<{ date: string; value: number }>;
+    };
+    period: {
+      startDate: string;
+      endDate: string;
+    };
+  }>> =>
+    apiRequest(`/analytics${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+};
+
+// Customization API endpoints
+export const customizationAPI = {
+  // Favorites
+  addFavorite: (boardId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest('/customization/favorites', {
+      method: 'POST',
+      body: JSON.stringify({ boardId }),
+    }),
+  removeFavorite: (boardId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/customization/favorites/${boardId}`, {
+      method: 'DELETE',
+    }),
+  getFavorites: (): Promise<ApiResponse<Array<{
+    id: string;
+    boardId: string;
+    position: number;
+    board?: {
+      id: string;
+      name: string;
+      color?: string;
+      icon?: string;
+    };
+  }>>> =>
+    apiRequest('/customization/favorites'),
+  reorderFavorites: (boardIds: string[]): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest('/customization/favorites/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ boardIds }),
+    }),
+
+  // Recent boards
+  trackAccess: (boardId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest('/customization/recent', {
+      method: 'POST',
+      body: JSON.stringify({ boardId }),
+    }),
+  getRecentBoards: (limit?: number): Promise<ApiResponse<Array<{
+    id: string;
+    boardId: string;
+    lastAccessedAt: string;
+    accessCount: number;
+    board?: {
+      id: string;
+      name: string;
+      color?: string;
+      icon?: string;
+    };
+  }>>> =>
+    apiRequest(`/customization/recent${limit ? `?limit=${limit}` : ''}`),
+
+  // Custom views
+  createCustomView: (data: {
+    boardId: string;
+    name: string;
+    viewType: string;
+    config: Record<string, unknown>;
+    description?: string;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/customization/views', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getCustomViews: (boardId: string): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    viewType: string;
+    config: Record<string, unknown>;
+    isDefault?: boolean;
+  }>>> =>
+    apiRequest(`/customization/views/board/${boardId}`),
+  updateCustomView: (viewId: string, updates: Record<string, unknown>): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/customization/views/${viewId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+  deleteCustomView: (viewId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/customization/views/${viewId}`, {
+      method: 'DELETE',
+    }),
+
+  // Preferences
+  getPreferences: (): Promise<ApiResponse<{
+    uiPreferences: {
+      theme: string;
+      sidebarCollapsed: boolean;
+      density: string;
+      fontSize: string;
+      showAvatars: boolean;
+      showTimestamps: boolean;
+    };
+    notificationPreferences: {
+      emailNotifications: boolean;
+      pushNotifications: boolean;
+      itemUpdates: boolean;
+      comments: boolean;
+      mentions: boolean;
+      approvals: boolean;
+      dueDates: boolean;
+      weeklyDigest: boolean;
+    };
+    boardPreferences: {
+      defaultView: string;
+      showCompletedItems: boolean;
+      autoSave: boolean;
+    };
+  }>> =>
+    apiRequest('/customization/preferences'),
+  updatePreferences: (preferences: Record<string, unknown>): Promise<ApiResponse<unknown>> =>
+    apiRequest('/customization/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    }),
+};
+
+export const notificationAPI = {
+  // Get notifications
+  getNotifications: (options?: { unreadOnly?: boolean; limit?: number; offset?: number }): Promise<ApiResponse<Array<{
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    link?: string;
+    read: boolean;
+    createdAt: string;
+    metadata?: Record<string, unknown>;
+  }>>> => {
+    const params = new URLSearchParams();
+    if (options?.unreadOnly) params.append('unreadOnly', 'true');
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.offset) params.append('offset', options.offset.toString());
+    return apiRequest(`/notifications${params.toString() ? '?' + params.toString() : ''}`);
+  },
+
+  // Get unread count
+  getUnreadCount: (): Promise<ApiResponse<{ count: number }>> =>
+    apiRequest('/notifications/unread-count'),
+
+  // Mark as read
+  markAsRead: (notificationId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    }),
+
+  // Mark all as read
+  markAllAsRead: (): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest('/notifications/read-all', {
+      method: 'PUT',
+    }),
+
+  // Delete notification
+  deleteNotification: (notificationId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/notifications/${notificationId}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const reportAPI = {
+  // Create report
+  createReport: (data: {
+    workspaceId?: string;
+    boardId?: string;
+    name: string;
+    type: 'invoice_summary' | 'approval_status' | 'payment_status' | 'aging' | 'custom';
+    config: {
+      columns?: string[];
+      filters?: Record<string, unknown>;
+      grouping?: unknown;
+      sorting?: unknown;
+    };
+    schedule?: unknown;
+    isActive?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get workspace reports
+  getWorkspaceReports: (workspaceId: string): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/reports/workspace/${workspaceId}`),
+
+  // Get report by ID
+  getReportById: (reportId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/reports/${reportId}`),
+
+  // Update report
+  updateReport: (reportId: string, data: {
+    name?: string;
+    config?: unknown;
+    schedule?: unknown;
+    isActive?: boolean;
+  }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/reports/${reportId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete report
+  deleteReport: (reportId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/reports/${reportId}`, {
+      method: 'DELETE',
+    }),
+
+  // Generate report
+  generateReport: (data: {
+    type: 'invoice_summary' | 'approval_status' | 'payment_status' | 'aging' | 'custom';
+    boardId?: string;
+    workspaceId?: string;
+    config: unknown;
+  }): Promise<ApiResponse<{
+    columns: string[];
+    rows: Array<Record<string, unknown>>;
+    summary?: unknown;
+    metadata: unknown;
+  }>> =>
+    apiRequest('/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const approvalAPI = {
+  // Request approval for an item
+  requestApproval: (itemId: string, data?: { levels?: string[] }): Promise<ApiResponse<unknown[]>> =>
+    apiRequest(`/approvals/item/${itemId}/request`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  
+  // Get approvals for an item
+  getItemApprovals: (itemId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/approvals/item/${itemId}`),
+  
+  // Get my pending approvals
+  getMyPendingApprovals: (): Promise<ApiResponse<unknown[]>> =>
+    apiRequest('/approvals/pending'),
+  
+  // Create approval
+  createApproval: (data: { itemId: string; level: string; approverId?: string }): Promise<ApiResponse<unknown>> =>
+    apiRequest('/approvals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  // Get approval by ID
+  getApprovalById: (approvalId: string): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/approvals/${approvalId}`),
+  
+  // Update approval (approve/reject)
+  updateApproval: (approvalId: string, data: { status: string; comments?: string; approverId?: string }): Promise<ApiResponse<unknown>> =>
+    apiRequest(`/approvals/${approvalId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  // Delete approval
+  deleteApproval: (approvalId: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/approvals/${approvalId}`, {
+      method: 'DELETE',
+    }),
 };

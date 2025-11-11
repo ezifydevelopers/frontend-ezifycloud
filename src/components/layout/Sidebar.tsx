@@ -39,6 +39,8 @@ import {
   Trash2,
   Menu,
   X,
+  User,
+  PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -59,6 +61,8 @@ interface NavItem {
   description?: string;
   isNew?: boolean;
   isComingSoon?: boolean;
+  isSystem?: boolean;
+  systemType?: 'invoice' | 'leave';
 }
 
 interface NavSection {
@@ -79,13 +83,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     teamMembers: 0
   });
 
-  console.log('🔍 Sidebar: Current sidebarStats:', sidebarStats);
-  console.log('🔍 Sidebar: Dashboard data:', dashboardData);
+  // Debug logs removed for production
 
   // Update sidebar stats when dashboard data changes
   useEffect(() => {
     if (dashboardData?.stats) {
-      console.log('🔍 Sidebar: Updating stats from dashboard data:', dashboardData.stats);
       setSidebarStats(prev => ({
         ...prev,
         totalEmployees: dashboardData.stats.totalEmployees || 0,
@@ -96,26 +98,24 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   // Fetch sidebar stats for admin and manager users (fallback)
   useEffect(() => {
-    console.log('🔍 Sidebar: useEffect triggered, user role:', user?.role);
     const fetchSidebarStats = async () => {
       if (user?.role === 'admin') {
-        console.log('🔍 Sidebar: Fetching admin stats...');
         try {
           const quickStatsResponse = await adminAPI.getQuickStats();
 
           if (quickStatsResponse.success) {
-            console.log('🔍 Sidebar: Quick stats response:', quickStatsResponse.data);
             setSidebarStats(prev => ({
               ...prev,
               totalEmployees: quickStatsResponse.data.totalEmployees || 0,
               pendingRequests: quickStatsResponse.data.pendingRequests || 0,
             }));
-            console.log('🔍 Sidebar: Updated stats:', {
-              totalEmployees: quickStatsResponse.data.totalEmployees || 0,
-              pendingRequests: quickStatsResponse.data.pendingRequests || 0
-            });
           }
         } catch (error) {
+          // Silently fail for connection errors - backend might not be running
+          if (error instanceof Error && (error as any).isConnectionError) {
+            // Backend not running - this is expected in development
+            return;
+          }
           console.error('Error fetching admin sidebar stats:', error);
         }
       } else if (user?.role === 'manager') {
@@ -143,70 +143,37 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   const adminNavSections: NavSection[] = [
     {
-      title: 'Overview',
+      title: 'Systems',
       items: [
-        { 
-          icon: LayoutDashboard, 
-          label: 'Dashboard', 
-          href: '/admin/dashboard',
-          description: 'System overview and analytics'
+        {
+          icon: FileText,
+          label: 'Invoice System (WorkSpace)',
+          href: '/invoice-system',
+          description: 'Manage invoices and payments',
+          isSystem: true,
+          systemType: 'invoice'
+        },
+        {
+          icon: Calendar,
+          label: 'Leave Management',
+          href: '/admin/leave-management',
+          description: 'Manage leave requests, policies, and holidays',
+          isSystem: true,
+          systemType: 'leave'
         },
       ]
     },
     {
-      title: 'Management',
+      title: 'User Management',
       items: [
-        { 
-          icon: Users, 
-          label: 'Employees', 
-          href: '/admin/employees',
-          badge: sidebarStats.totalEmployees,
-          description: 'Manage team members'
-        },
-        { 
-          icon: FileText, 
-          label: 'Leave Requests', 
-          href: '/admin/leave-requests',
-          badge: sidebarStats.pendingRequests,
-          description: 'Review and approve requests'
-        },
-        { 
-          icon: BookOpen, 
-          label: 'Leave Policies', 
-          href: '/admin/policies',
-          description: 'Configure leave rules'
-        },
-        { 
-          icon: Calendar, 
-          label: 'Holidays', 
-          href: '/admin/holidays',
-          description: 'Manage public holidays'
-        },
-        // { 
-        //   icon: Clock, 
-        //   label: 'Attendance', 
-        //   href: '/admin/attendance',
-        //   description: 'Track employee attendance'
-        // },
-        { 
-          icon: Building2, 
-          label: 'Office Capacity', 
-          href: '/admin/capacity',
-          description: 'View office capacity and presence'
+        {
+          icon: UserCheck,
+          label: 'User Approvals',
+          href: '/admin/user-approvals',
+          description: 'Approve or reject user access requests',
         },
       ]
     },
-    // {
-    //   title: 'Finance',
-    //   items: [
-    //     { 
-    //       icon: DollarSign, 
-    //       label: 'Salary Management', 
-    //       href: '/admin/salary',
-    //       description: 'Manage employee salaries and deductions'
-    //     },
-    //   ]
-    // },
     {
       title: 'Configuration',
       items: [
@@ -222,64 +189,57 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   const managerNavSections: NavSection[] = [
     {
-      title: 'Overview',
+      title: 'Dashboard',
       items: [
-        { 
-          icon: LayoutDashboard, 
-          label: 'Dashboard', 
+        {
+          icon: LayoutDashboard,
+          label: 'Dashboard',
           href: '/manager/dashboard',
-          description: 'Team overview and metrics'
+          description: 'Overview and quick stats'
         },
       ]
     },
     {
       title: 'Team Management',
       items: [
-        { 
-          icon: FileText, 
-          label: 'Approvals', 
-          href: '/manager/approvals',
-          badge: sidebarStats.pendingRequests > 0 ? sidebarStats.pendingRequests : undefined,
-          description: 'Review leave requests'
-        },
-        { 
-          icon: Users, 
-          label: 'Team Overview', 
+        {
+          icon: Users,
+          label: 'Team Overview',
           href: '/manager/team',
-          badge: sidebarStats.teamMembers > 0 ? sidebarStats.teamMembers : undefined,
-          description: 'Manage team members'
+          description: 'View all team members and employees'
         },
-        { 
-          icon: Activity, 
-          label: 'Capacity', 
+        {
+          icon: UserCheck,
+          label: 'Approvals',
+          href: '/manager/approvals',
+          description: 'Review and approve team requests',
+          badge: sidebarStats.pendingRequests > 0 ? sidebarStats.pendingRequests : undefined
+        },
+        {
+          icon: Target,
+          label: 'Team Capacity',
           href: '/manager/capacity',
-          description: 'Track team availability'
+          description: 'View team capacity and workload'
         },
       ]
     },
-    // Leave Management section temporarily hidden
-    // {
-    //   title: 'Leave Management',
-    //   items: [
-    //     { 
-    //       icon: Calendar, 
-    //       label: 'My Leave', 
-    //       href: '/manager/leave-management',
-    //       description: 'Request leave and track balance'
-    //     },
-    //   ]
-    // },
-    // {
-    //   title: 'Finance',
-    //   items: [
-    //     { 
-    //       icon: DollarSign, 
-    //       label: 'Team Salary', 
-    //       href: '/manager/salary',
-    //       description: 'Manage team salaries and deductions'
-    //     },
-    //   ]
-    // },
+    {
+      title: 'My Leave',
+      items: [
+        {
+          icon: FileText,
+          label: 'Request Leave',
+          href: '/manager/request-leave',
+          description: 'Submit a new leave request'
+        },
+        {
+          icon: Clock,
+          label: 'Leave History',
+          href: '/manager/leave-history',
+          description: 'View your leave request history'
+        },
+      ]
+    },
     {
       title: 'Configuration',
       items: [
@@ -295,36 +255,48 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   const employeeNavSections: NavSection[] = [
     {
-      title: 'Overview',
+      title: 'Dashboard',
       items: [
-        { 
-          icon: LayoutDashboard, 
-          label: 'Dashboard', 
+        {
+          icon: LayoutDashboard,
+          label: 'Dashboard',
           href: '/employee/dashboard',
-          description: 'Personal overview'
+          description: 'Overview and quick stats'
         },
       ]
     },
     {
       title: 'Leave Management',
       items: [
-        { 
-          icon: FileText, 
-          label: 'Request Leave', 
+        {
+          icon: FileText,
+          label: 'Request Leave',
           href: '/employee/request-leave',
-          description: 'Submit new requests'
+          description: 'Submit a new leave request'
         },
-        { 
-          icon: Clock, 
-          label: 'Leave History', 
-          href: '/employee/history',
-          description: 'View past requests'
+        {
+          icon: Clock,
+          label: 'Leave History',
+          href: '/employee/leave-history',
+          description: 'View your leave request history'
+        },
+        {
+          icon: BarChart3,
+          label: 'Leave Reports',
+          href: '/employee/leave-reports',
+          description: 'View comprehensive leave reports and statistics'
         },
       ]
     },
     {
-      title: 'Settings',
+      title: 'Profile & Settings',
       items: [
+        {
+          icon: User,
+          label: 'My Profile',
+          href: '/employee/profile',
+          description: 'View and edit your profile'
+        },
         { 
           icon: Settings, 
           label: 'Settings', 
@@ -432,66 +404,114 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     return (
                       <Tooltip key={item.href}>
                         <TooltipTrigger asChild>
-                          <NavLink to={item.href}>
-                            {({ isActive: navIsActive }) => (
-                              <div
-                                className={cn(
-                                  'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                                  'hover:scale-[1.02] hover:shadow-md',
-                                  isItemActive || navIsActive
-                                    ? `bg-gradient-to-r ${getRoleColor()} text-white shadow-lg`
-                                    : 'text-slate-600 hover:bg-slate-100/50 hover:text-slate-900'
-                                )}
-                                style={{ animationDelay: `${(sectionIndex * 100) + (itemIndex * 50)}ms` }}
-                              >
-                                <div className={cn(
-                                  'p-1.5 rounded-lg transition-all duration-200',
-                                  isItemActive || navIsActive
-                                    ? 'bg-white/20'
-                                    : 'group-hover:bg-slate-200/50'
-                                )}>
-                                  <item.icon className="w-4 h-4" />
-                                </div>
-                                {!isCollapsed && (
-                                  <>
-                                    <span className="flex-1 truncate">{item.label}</span>
-                                    {item.badge && (
-                                      <Badge 
-                                        variant="secondary" 
-                                        className={cn(
-                                          'text-xs px-2 py-0.5',
-                                          isItemActive || navIsActive
-                                            ? 'bg-white/20 text-white border-white/30'
-                                            : 'bg-slate-200 text-slate-700'
-                                        )}
-                                      >
-                                        {item.badge}
-                                      </Badge>
-                                    )}
-                                    {item.isNew && (
-                                      <Badge 
-                                        variant="default" 
-                                        className="text-xs px-2 py-0.5 bg-green-500 text-white"
-                                      >
-                                        New
-                                      </Badge>
-                                    )}
-                                    {item.isComingSoon && (
-                                      <Badge 
-                                        variant="outline" 
-                                        className="text-xs px-2 py-0.5 text-slate-500"
-                                      >
-                                        Soon
-                                      </Badge>
-                                    )}
-                                  </>
-                                )}
-                                {(isItemActive || navIsActive) && (
-                                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-l-full"></div>
-                                )}
+                          {item.isSystem ? (
+                            <div
+                              onClick={() => {
+                                window.dispatchEvent(new CustomEvent('openSystemSidebar', { 
+                                  detail: { systemType: item.systemType, href: item.href }
+                                }));
+                              }}
+                              className={cn(
+                                'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer',
+                                'hover:scale-[1.02] hover:shadow-md',
+                                isItemActive
+                                  ? `bg-gradient-to-r ${getRoleColor()} text-white shadow-lg`
+                                  : 'text-slate-600 hover:bg-slate-100/50 hover:text-slate-900'
+                              )}
+                              style={{ animationDelay: `${(sectionIndex * 100) + (itemIndex * 50)}ms` }}
+                            >
+                              <div className={cn(
+                                'p-1.5 rounded-lg transition-all duration-200',
+                                isItemActive
+                                  ? 'bg-white/20'
+                                  : 'group-hover:bg-slate-200/50'
+                              )}>
+                                <item.icon className="w-4 h-4" />
                               </div>
-                            )}
-                          </NavLink>
+                              {!isCollapsed && (
+                                <>
+                                  <span className="flex-1 truncate">{item.label}</span>
+                                  {item.badge && (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className={cn(
+                                        'text-xs px-2 py-0.5',
+                                        isItemActive
+                                          ? 'bg-white/20 text-white border-white/30'
+                                          : 'bg-slate-200 text-slate-700'
+                                      )}
+                                    >
+                                      {item.badge}
+                                    </Badge>
+                                  )}
+                                </>
+                              )}
+                              {isItemActive && (
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-l-full"></div>
+                              )}
+                            </div>
+                          ) : (
+                            <NavLink to={item.href}>
+                              {({ isActive: navIsActive }) => (
+                                <div
+                                  className={cn(
+                                    'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                                    'hover:scale-[1.02] hover:shadow-md',
+                                    isItemActive || navIsActive
+                                      ? `bg-gradient-to-r ${getRoleColor()} text-white shadow-lg`
+                                      : 'text-slate-600 hover:bg-slate-100/50 hover:text-slate-900'
+                                  )}
+                                  style={{ animationDelay: `${(sectionIndex * 100) + (itemIndex * 50)}ms` }}
+                                >
+                                  <div className={cn(
+                                    'p-1.5 rounded-lg transition-all duration-200',
+                                    isItemActive || navIsActive
+                                      ? 'bg-white/20'
+                                      : 'group-hover:bg-slate-200/50'
+                                  )}>
+                                    <item.icon className="w-4 h-4" />
+                                  </div>
+                                  {!isCollapsed && (
+                                    <>
+                                      <span className="flex-1 truncate">{item.label}</span>
+                                      {item.badge && (
+                                        <Badge 
+                                          variant="secondary" 
+                                          className={cn(
+                                            'text-xs px-2 py-0.5',
+                                            isItemActive || navIsActive
+                                              ? 'bg-white/20 text-white border-white/30'
+                                              : 'bg-slate-200 text-slate-700'
+                                          )}
+                                        >
+                                          {item.badge}
+                                        </Badge>
+                                      )}
+                                      {item.isNew && (
+                                        <Badge 
+                                          variant="default" 
+                                          className="text-xs px-2 py-0.5 bg-green-500 text-white"
+                                        >
+                                          New
+                                        </Badge>
+                                      )}
+                                      {item.isComingSoon && (
+                                        <Badge 
+                                          variant="outline" 
+                                          className="text-xs px-2 py-0.5 text-slate-500"
+                                        >
+                                          Soon
+                                        </Badge>
+                                      )}
+                                    </>
+                                  )}
+                                  {(isItemActive || navIsActive) && (
+                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-l-full"></div>
+                                  )}
+                                </div>
+                              )}
+                            </NavLink>
+                          )}
                         </TooltipTrigger>
                         {isCollapsed && (
                           <TooltipContent side="right" className="bg-slate-900 text-white border-slate-700">
@@ -544,7 +564,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             )}
           </div>
           
-          {isCollapsed && (
+          {isCollapsed ? (
             <Button
               variant="ghost"
               size="sm"
@@ -553,6 +573,10 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             >
               <LogOut className="w-4 h-4" />
             </Button>
+          ) : (
+            <div className="flex items-center gap-2 mt-2">
+              {/* Theme toggle removed - light mode only */}
+            </div>
           )}
         </div>
       </div>

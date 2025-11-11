@@ -329,3 +329,6 @@ export const {
   UPLOAD,
   SECURITY,
 } = APP_CONFIG;
+
+// Export commonly used values directly for convenience
+export const API_BASE_URL = APP_CONFIG.API_BASE_URL;

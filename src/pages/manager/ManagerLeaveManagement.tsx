@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { managerAPI } from '@/lib/api';
 import { LeaveBalanceCard } from '@/components/hoc/withLeaveBalance';
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Calendar,
   Clock,
@@ -34,6 +36,8 @@ import {
   User,
   Building2,
   Clock3,
+  Search,
+  Users,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useDashboard } from '@/contexts/DashboardContext';
@@ -55,19 +59,70 @@ interface LeaveRequest {
   comments?: string;
 }
 
+interface TeamLeaveRequest extends LeaveRequest {
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    department: string;
+    avatar?: string;
+  };
+  priority?: 'low' | 'medium' | 'high';
+  emergencyContact?: string;
+  workHandover?: string;
+}
+
 const ManagerLeaveManagement: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { triggerGlobalRefresh } = useDashboard();
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [recentRequests, setRecentRequests] = useState<LeaveRequest[]>([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [teamLeaveRequests, setTeamLeaveRequests] = useState<TeamLeaveRequest[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
+  const [teamFilters, setTeamFilters] = useState({
+    status: 'all',
+    leaveType: 'all',
+    department: 'all',
+    search: '',
+  });
+
+  // Sync tab with URL parameter
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl && tabFromUrl !== activeTab && ['overview', 'team', 'request', 'history'].includes(tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  // Update URL when tab changes
+  useEffect(() => {
+    const currentTab = searchParams.get('tab') || 'overview';
+    if (activeTab !== currentTab) {
+      const newSearchParams = new URLSearchParams(searchParams);
+      if (activeTab === 'overview') {
+        newSearchParams.delete('tab');
+      } else {
+        newSearchParams.set('tab', activeTab);
+      }
+      navigate(`?${newSearchParams.toString()}`, { replace: true });
+    }
+  }, [activeTab, navigate, searchParams]);
 
   // Fetch manager leave data
   useEffect(() => {
     fetchManagerLeaveData();
   }, []);
+
+  // Fetch team leave requests when team tab is active
+  useEffect(() => {
+    if (activeTab === 'team') {
+      fetchTeamLeaveRequests();
+    }
+  }, [activeTab, teamFilters]);
 
   const fetchManagerLeaveData = async () => {
     try {
@@ -93,6 +148,103 @@ const ManagerLeaveManagement: React.FC = () => {
       setRecentRequests([]);
     } finally {
       setDataLoading(false);
+    }
+  };
+
+  const fetchTeamLeaveRequests = async () => {
+    try {
+      setTeamLoading(true);
+      const params: Record<string, unknown> = {
+        limit: 100,
+      };
+
+      if (teamFilters.status !== 'all') {
+        params.status = teamFilters.status;
+      }
+      if (teamFilters.leaveType !== 'all') {
+        params.leaveType = teamFilters.leaveType;
+      }
+
+      const response = await managerAPI.getLeaveApprovals(params);
+      
+      if (response.success && response.data) {
+        const requests = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setTeamLeaveRequests(requests as TeamLeaveRequest[]);
+      } else {
+        setTeamLeaveRequests([]);
+      }
+    } catch (error) {
+      console.error('Error fetching team leave requests:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch team leave requests',
+        variant: 'destructive',
+      });
+      setTeamLeaveRequests([]);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  const handleApprove = async (requestId: string) => {
+    try {
+      setLoading(true);
+      const response = await managerAPI.processApprovalAction({
+        requestId,
+        action: 'approve',
+        comments: 'Approved by manager',
+      });
+
+      if (response.success) {
+        toast({
+          title: 'Request Approved',
+          description: 'Leave request has been approved successfully',
+        });
+        await fetchTeamLeaveRequests();
+        triggerGlobalRefresh('leave');
+      } else {
+        throw new Error(response.message || 'Failed to approve request');
+      }
+    } catch (error) {
+      console.error('Error approving request:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to approve request',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    try {
+      setLoading(true);
+      const response = await managerAPI.processApprovalAction({
+        requestId,
+        action: 'reject',
+        comments: 'Rejected by manager',
+      });
+
+      if (response.success) {
+        toast({
+          title: 'Request Rejected',
+          description: 'Leave request has been rejected',
+        });
+        await fetchTeamLeaveRequests();
+        triggerGlobalRefresh('leave');
+      } else {
+        throw new Error(response.message || 'Failed to reject request');
+      }
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to reject request',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -327,10 +479,14 @@ const ManagerLeaveManagement: React.FC = () => {
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-white/90 backdrop-blur-sm border-white/30 shadow-lg rounded-2xl p-1">
+          <TabsList className="grid w-full grid-cols-4 bg-white/90 backdrop-blur-sm border-white/30 shadow-lg rounded-2xl p-1">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Overview
+            </TabsTrigger>
+            <TabsTrigger value="team" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Team Leaves
             </TabsTrigger>
             <TabsTrigger value="request" className="flex items-center gap-2">
               <PlusCircle className="h-4 w-4" />
@@ -467,6 +623,177 @@ const ManagerLeaveManagement: React.FC = () => {
                   customDescription="Your current leave balance across different categories"
                 />
               </div>
+            </div>
+          </TabsContent>
+
+          {/* Team Leave Requests Tab */}
+          <TabsContent value="team" className="space-y-6">
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-3 text-xl">
+                        <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                          <Users className="h-5 w-5 text-white" />
+                        </div>
+                        Team Leave Requests
+                      </CardTitle>
+                      <p className="text-slate-600 text-sm mt-2">Manage and approve leave requests from your team members</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchTeamLeaveRequests}
+                      disabled={teamLoading}
+                      className="text-xs hover:bg-blue-50 hover:border-blue-200"
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${teamLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Filters */}
+                  <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:col-span-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                          placeholder="Search by employee name or reason..."
+                          value={teamFilters.search}
+                          onChange={(e) => setTeamFilters(prev => ({ ...prev, search: e.target.value }))}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                    <Select value={teamFilters.status} onValueChange={(value) => setTeamFilters(prev => ({ ...prev, status: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={teamFilters.leaveType} onValueChange={(value) => setTeamFilters(prev => ({ ...prev, leaveType: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="annual">Annual Leave</SelectItem>
+                        <SelectItem value="sick">Sick Leave</SelectItem>
+                        <SelectItem value="casual">Casual Leave</SelectItem>
+                        <SelectItem value="emergency">Emergency Leave</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Team Leave Requests List */}
+                  {teamLoading ? (
+                    <div className="text-center py-12">
+                      <RefreshCw className="h-8 w-8 animate-spin text-slate-400 mx-auto mb-4" />
+                      <p className="text-slate-600">Loading team leave requests...</p>
+                    </div>
+                  ) : teamLeaveRequests.length > 0 ? (
+                    <div className="space-y-4">
+                      {teamLeaveRequests
+                        .filter(request => {
+                          const matchesSearch = teamFilters.search === '' || 
+                            request.employee?.name?.toLowerCase().includes(teamFilters.search.toLowerCase()) ||
+                            request.reason?.toLowerCase().includes(teamFilters.search.toLowerCase());
+                          const matchesStatus = teamFilters.status === 'all' || request.status === teamFilters.status;
+                          const matchesType = teamFilters.leaveType === 'all' || request.leaveType === teamFilters.leaveType;
+                          return matchesSearch && matchesStatus && matchesType;
+                        })
+                        .map((request) => (
+                        <div key={request.id} className="group p-4 rounded-2xl border border-slate-200/50 bg-gradient-to-r from-slate-50 to-blue-50/30 hover:shadow-md hover:border-blue-200/50 transition-all duration-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4 flex-1">
+                              <Avatar className="h-12 w-12 ring-2 ring-white shadow-md">
+                                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold text-sm">
+                                  {request.employee?.name?.charAt(0) || 'E'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h3 className="font-semibold text-slate-900">{request.employee?.name || 'Unknown'}</h3>
+                                  <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700">
+                                    {request.employee?.department || 'N/A'}
+                                  </Badge>
+                                  <Badge className={`text-xs ${getLeaveTypeColor(request.leaveType)}`}>
+                                    {request.leaveType}
+                                  </Badge>
+                                  <Badge className={`text-xs ${getStatusColor(request.status)}`}>
+                                    {getStatusIcon(request.status)}
+                                    <span className="ml-1">{request.status}</span>
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-slate-600 mb-1">
+                                  {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
+                                </p>
+                                <p className="text-xs text-slate-500 mb-1">
+                                  {request.isHalfDay ?
+                                    `Half day (${request.halfDayPeriod || 'morning'})` :
+                                    `${request.days || request.totalDays} days`
+                                  }
+                                </p>
+                                {request.reason && (
+                                  <p className="text-xs text-slate-500 italic line-clamp-1">"{request.reason}"</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              {request.status === 'pending' && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleReject(request.id)}
+                                    disabled={loading}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reject
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApprove(request.id)}
+                                    disabled={loading}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Approve
+                                  </Button>
+                                </>
+                              )}
+                              {request.status !== 'pending' && (
+                                <div className="text-right">
+                                  <p className="text-xs text-slate-500">
+                                    {request.reviewedAt ? `Reviewed: ${new Date(request.reviewedAt).toLocaleDateString()}` : ''}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                        <Users className="h-8 w-8 text-blue-500" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-slate-700 mb-2">No team leave requests found</h3>
+                      <p className="text-slate-500">No leave requests from your team members at this time</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 

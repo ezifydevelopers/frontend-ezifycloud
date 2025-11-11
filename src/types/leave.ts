@@ -3,21 +3,31 @@ export type LeaveType = 'annual' | 'sick' | 'casual' | 'maternity' | 'paternity'
 
 export interface LeaveRequest {
   id: string;
-  employeeId: string;
-  employeeName: string;
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    department: string;
+    avatar?: string;
+  };
   leaveType: LeaveType;
-  startDate: Date;
-  endDate: Date;
+  startDate: string;
+  endDate: string;
   totalDays: number;
   reason: string;
   status: LeaveStatus;
-  submittedAt: Date;
+  isPaid?: boolean;
+  submittedAt: string;
   approvedBy?: string;
-  approvedAt?: Date;
+  approvedAt?: string;
   rejectedReason?: string;
   documents?: string[];
   isHalfDay?: boolean;
   comments?: string;
+  priority?: 'low' | 'medium' | 'high';
+  emergencyContact?: string;
+  workHandover?: string;
+  halfDayPeriod?: 'morning' | 'afternoon';
 }
 
 export interface LeaveBalance {
@@ -49,6 +59,7 @@ export interface LeavePolicy {
   maxDaysPerRequest: number;
   carryForwardDays: number;
   carryForwardExpiry: number; // months
+  isPaid?: boolean;
   requiresApproval: boolean;
   requiresDocumentation: boolean;
   isActive: boolean;

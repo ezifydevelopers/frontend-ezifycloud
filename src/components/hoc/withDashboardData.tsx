@@ -114,12 +114,15 @@ export function withDashboardData<P extends object>(
       }
 
       const now = Date.now();
-      const cacheKey = `${user.role}-${user.id}`;
+      // Include region/employeeType in cache key for proper region-specific caching
+      const regionKey = user.employeeType ? `-${user.employeeType}` : '';
+      const regionName = user.region ? `-${user.region}` : '';
+      const cacheKey = `${user.role}-${user.id}${regionKey}${regionName}`;
       
       // Check cache validity
       if (!forceRefresh && 
           dashboardDataCache.data && 
-          dashboardDataCache.userRole === user.role &&
+          dashboardDataCache.userRole === cacheKey &&
           (now - dashboardDataCache.timestamp) < cacheTimeout) {
         console.log('✅ withDashboardData: Using cached data');
         setDashboardData(dashboardDataCache.data);
@@ -137,7 +140,16 @@ export function withDashboardData<P extends object>(
         const token = localStorage.getItem('token');
         console.log('🔍 withDashboardData: Auth token exists:', !!token);
         
-        // Fetch data based on user role
+        // Build region-specific params for employees
+        const dashboardParams: Record<string, string> = {};
+        if (user.role === 'employee' && user.employeeType) {
+          dashboardParams.employeeType = user.employeeType;
+        }
+        if (user.role === 'employee' && user.region) {
+          dashboardParams.region = user.region;
+        }
+        
+        // Fetch data based on user role with region-specific params
         let teamResponse, leavesResponse, capacityResponse, holidaysResponse, pendingRequestsResponse;
         
         switch (user.role) {
@@ -163,8 +175,8 @@ export function withDashboardData<P extends object>(
             
           case 'employee':
             [teamResponse, leavesResponse, capacityResponse, holidaysResponse, pendingRequestsResponse] = await Promise.all([
-              employeeAPI.getDashboardStats().catch(() => ({ success: false, data: null })),
-              employeeAPI.getLeaveRequests({ limit: 100 }).catch(() => ({ success: false, data: [] })),
+              employeeAPI.getDashboardStats(Object.keys(dashboardParams).length > 0 ? dashboardParams : undefined).catch(() => ({ success: false, data: null })),
+              employeeAPI.getLeaveRequests(Object.keys(dashboardParams).length > 0 ? { ...dashboardParams, limit: 100 } : { limit: 100 }).catch(() => ({ success: false, data: [] })),
               Promise.resolve({ success: false, data: null }), // No capacity data for employees
               Promise.resolve({ success: false, data: [] }), // No holidays API for employee
               Promise.resolve({ success: false, data: [] }) // No pending requests API for employee
@@ -343,12 +355,20 @@ export function withDashboardData<P extends object>(
         const recentRequests = requestsToProcess ? 
           (Array.isArray(requestsToProcess) ? requestsToProcess : requestsToProcess.data || [])
             .map((leave: Record<string, unknown>) => {
-              const employeeName = String((leave.user as Record<string, unknown>)?.name || leave.employeeName || (leave.employee as Record<string, unknown>)?.name || 'Unknown');
+              // Check multiple possible locations for employee name
+              // Backend returns: userName, employee.name, user.name
+              const employeeName = String(
+                leave.userName || 
+                (leave.employee as Record<string, unknown>)?.name || 
+                (leave.user as Record<string, unknown>)?.name || 
+                leave.employeeName || 
+                'Unknown'
+              );
               // Check multiple possible locations for department data
               const department = String(
-                (leave.user as Record<string, unknown>)?.department || 
+                leave.department ||
                 (leave.employee as Record<string, unknown>)?.department || 
-                leave.department || 
+                (leave.user as Record<string, unknown>)?.department || 
                 'Unassigned'
               );
               
@@ -397,11 +417,11 @@ export function withDashboardData<P extends object>(
           lastUpdated: new Date()
         };
 
-        // Update cache
+        // Update cache with region-specific key
         dashboardDataCache = {
           data: processedData,
           timestamp: now,
-          userRole: user.role
+          userRole: cacheKey // Use the full cache key including region info
         };
 
         setDashboardData(processedData);

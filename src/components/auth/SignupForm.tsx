@@ -141,7 +141,9 @@ const SignupForm: React.FC = () => {
         description: 'Welcome to the leave management system.',
       });
 
-      navigate('/employee/dashboard');
+      // After signup, user data is not immediately available, so redirect to login
+      // The login will then route to the appropriate dashboard based on employeeType
+      navigate('/login');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create account. Please try again.';
       setError(errorMessage);

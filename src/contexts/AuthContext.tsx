@@ -64,6 +64,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const data = await authAPI.login(email, password);
 
+      // Check if response indicates pending approval
+      if (data.success === false && (data as any).requiresApproval) {
+        const approvalStatus = (data as any).approvalStatus;
+        throw new Error(data.message || 'Account pending approval');
+      }
+
       if (data.success && data.data) {
         setUser(data.data.user);
         localStorage.setItem('user', JSON.stringify(data.data.user));
@@ -99,7 +105,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await authAPI.register(userData);
 
       if (data.success && data.data) {
-        // Handle both user and token from registration response
+        // Handle pending approval case (no token returned)
+        if (data.data.requiresApproval) {
+          // Don't set user or token - user needs to wait for approval
+          throw new Error(data.message || 'Registration successful. Your account is pending approval.');
+        }
+        
+        // Handle approved user (token returned)
         if (data.data.user && data.data.token) {
           setUser(data.data.user);
           localStorage.setItem('user', JSON.stringify(data.data.user));
@@ -129,16 +141,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Always provide a context value to prevent undefined context errors
+  const contextValue: AuthContextType = {
+    user,
+    login,
+    logout,
+    clearAuthData,
+    signup,
+    resetPassword,
+    isLoading,
+  };
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      login,
-      logout,
-      clearAuthData,
-      signup,
-      resetPassword,
-      isLoading,
-    }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
@@ -147,7 +162,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // In development, provide a helpful error message
+    if (process.env.NODE_ENV === 'development') {
+      console.error('useAuth must be used within an AuthProvider. Make sure AuthProvider wraps your component tree.');
+    }
+    // Return a default context to prevent crashes during development
+    // This can happen during React Strict Mode double-rendering
+    return {
+      user: null,
+      isLoading: true,
+      login: async () => {},
+      logout: () => {},
+      clearAuthData: () => {},
+      signup: async () => {},
+      resetPassword: async () => {},
+    };
   }
   return context;
 };

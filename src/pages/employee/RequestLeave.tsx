@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { employeeAPI } from '@/lib/api';
+import { getEmployeeDashboardPath } from '@/utils/routing';
 import LeaveRequestForm from '@/components/forms/LeaveRequestForm';
 import { LeaveBalanceCard } from '@/components/hoc/withLeaveBalance';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -117,7 +118,8 @@ const RequestLeave: React.FC = () => {
         // Refresh data after successful submission
         await fetchEmployeeData();
         
-        navigate('/employee/dashboard');
+        // Navigate to appropriate dashboard based on employee type
+        navigate(getEmployeeDashboardPath(user?.employeeType));
       } else {
         console.log('🔍 RequestLeave: API returned success=false, showing error toast');
         // Show detailed error message if available

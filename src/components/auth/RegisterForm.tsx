@@ -87,6 +87,7 @@ const RegisterForm: React.FC = () => {
       
       await signup(registerData);
       
+      // If we reach here, user was auto-approved (admin)
       toast({
         title: 'Account created successfully!',
         description: 'Welcome to the leave management system.',
@@ -100,12 +101,21 @@ const RegisterForm: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed';
       setError(errorMessage);
       
-      // Show error toast
+      // Check if it's a pending approval message (not an error)
+      const isPendingApproval = errorMessage.toLowerCase().includes('pending approval');
+      
       toast({
-        title: 'Registration failed',
+        title: isPendingApproval ? 'Registration Successful' : 'Registration failed',
         description: errorMessage,
-        variant: 'destructive',
+        variant: isPendingApproval ? 'default' : 'destructive',
       });
+      
+      // If pending approval, redirect to login page
+      if (isPendingApproval) {
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+      }
     }
   };
 

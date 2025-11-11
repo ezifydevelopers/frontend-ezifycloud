@@ -1,5 +1,6 @@
 import React from 'react';
-import { LucideIcon } from 'lucide-react';
+import { LucideIcon, Keyboard } from 'lucide-react';
+import { KeyboardShortcutsDialog } from '@/components/ui/keyboard-shortcuts-dialog';
 
 interface PageHeaderProps {
   title: string;
@@ -41,10 +42,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
             {children}
+            <KeyboardShortcutsDialog />
             {showStatus && (
-              <div className="hidden md:flex items-center space-x-2">
+              <div className="hidden md:flex items-center space-x-2 ml-2">
                 <div className={`w-3 h-3 ${statusColor} rounded-full animate-pulse`}></div>
                 <span className="text-sm text-muted-foreground">{statusText}</span>
               </div>

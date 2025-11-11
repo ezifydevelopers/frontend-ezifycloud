@@ -94,9 +94,13 @@ const LoginForm: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Invalid email or password';
       setError(errorMessage);
       
-      // Show error toast
+      // Check if it's a pending approval error
+      const isPendingApproval = errorMessage.toLowerCase().includes('pending approval');
+      const isRejected = errorMessage.toLowerCase().includes('rejected');
+      
+      // Show error toast with appropriate styling
       toast({
-        title: 'Login failed',
+        title: isPendingApproval ? 'Account Pending Approval' : isRejected ? 'Access Rejected' : 'Login failed',
         description: errorMessage,
         variant: 'destructive',
       });
