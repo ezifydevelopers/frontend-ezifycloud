@@ -395,9 +395,16 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getLeaveTypeColor(request.leaveType)}>
-                          {request.leaveType}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getLeaveTypeColor(request.leaveType)}>
+                            {request.leaveType}
+                          </Badge>
+                          {request.isPaid === false && (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
+                              Unpaid
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">

@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import LeaveRequestDetails from '@/components/leave/LeaveRequestDetails';
+import { LeaveRequest as LeaveRequestType } from '@/types/leave';
 import { 
   Clock,
   Search,
@@ -39,6 +41,7 @@ const LeaveHistoryPage: React.FC = () => {
   const { user } = useAuth();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<LeaveRequestType | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     status: 'all',
@@ -365,8 +368,29 @@ const LeaveHistoryPage: React.FC = () => {
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Navigate to detail view
-                              console.log('View details:', request.id);
+                              // Convert local LeaveRequest to LeaveRequestType format
+                              const detailRequest: LeaveRequestType = {
+                                id: request.id,
+                                leaveType: request.leaveType as any,
+                                startDate: request.startDate,
+                                endDate: request.endDate,
+                                totalDays: request.days,
+                                reason: request.reason,
+                                status: request.status,
+                                priority: 'medium',
+                                isPaid: request.isPaid ?? true,
+                                isHalfDay: request.isHalfDay || false,
+                                halfDayPeriod: request.halfDayPeriod as any,
+                                submittedAt: request.submittedAt,
+                                employee: {
+                                  id: user?.id || '',
+                                  name: user?.name || 'Unknown',
+                                  email: user?.email || '',
+                                  department: user?.department || 'Unassigned',
+                                  avatar: user?.profilePicture || undefined
+                                }
+                              };
+                              setSelectedRequest(detailRequest);
                             }}
                           >
                             <Eye className="h-4 w-4" />
@@ -452,6 +476,15 @@ const LeaveHistoryPage: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* Leave Request Details Modal */}
+      {selectedRequest && (
+        <LeaveRequestDetails
+          request={selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          canApprove={false}
+        />
+      )}
     </div>
   );
 };

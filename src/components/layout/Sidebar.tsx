@@ -40,6 +40,7 @@ import {
   Menu,
   X,
   User,
+  User as UserIcon,
   PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -210,10 +211,16 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         },
         {
           icon: UserCheck,
-          label: 'Approvals',
+          label: 'Leave Approvals',
           href: '/manager/approvals',
-          description: 'Review and approve team requests',
+          description: 'Review and approve team leave requests',
           badge: sidebarStats.pendingRequests > 0 ? sidebarStats.pendingRequests : undefined
+        },
+        {
+          icon: UserIcon,
+          label: 'User Approvals',
+          href: '/manager/user-approvals',
+          description: 'Approve new user access requests',
         },
         {
           icon: Target,
@@ -308,16 +315,28 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   ];
 
   const getNavSections = () => {
-    switch (user?.role) {
-      case 'admin':
-        return adminNavSections;
-      case 'manager':
-        return managerNavSections;
-      case 'employee':
-        return employeeNavSections;
-      default:
-        return [];
-    }
+    const sections = (() => {
+      switch (user?.role) {
+        case 'admin':
+          return adminNavSections;
+        case 'manager':
+          return managerNavSections;
+        case 'employee':
+          return employeeNavSections;
+        default:
+          return [];
+      }
+    })();
+
+    // Filter out User Approvals items and remove empty sections
+    return sections
+      .map(section => ({
+        ...section,
+        items: section.items.filter(item => 
+          !item.href.includes('user-approvals') && item.label !== 'User Approvals'
+        )
+      }))
+      .filter(section => section.items.length > 0);
   };
 
   const isActive = (path: string) => location.pathname === path;

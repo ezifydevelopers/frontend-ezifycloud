@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
+import { adminAPI } from '@/lib/api/adminAPI';
+import { toast } from '@/hooks/use-toast';
+import PendingApprovalsWidget from '@/components/dashboard/PendingApprovalsWidget';
 import {
   LayoutDashboard,
   Calendar,
@@ -20,7 +25,11 @@ import {
   XCircle,
   Clock,
   ArrowRight,
-  Zap
+  Zap,
+  UserCheck,
+  Save,
+  Loader2,
+  Info
 } from 'lucide-react';
 
 const LeaveDashboardPage: React.FC<WithDashboardDataProps> = ({ 
@@ -30,6 +39,53 @@ const LeaveDashboardPage: React.FC<WithDashboardDataProps> = ({
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [probationDuration, setProbationDuration] = useState<number>(90);
+  const [loadingProbation, setLoadingProbation] = useState(false);
+  const [savingProbation, setSavingProbation] = useState(false);
+
+  useEffect(() => {
+    fetchProbationSettings();
+  }, []);
+
+  const fetchProbationSettings = async () => {
+    try {
+      setLoadingProbation(true);
+      const response = await adminAPI.getSystemConfig();
+      if (response.success && response.data) {
+        setProbationDuration(response.data.defaultProbationDuration || 90);
+      }
+    } catch (error) {
+      console.error('Error fetching probation settings:', error);
+    } finally {
+      setLoadingProbation(false);
+    }
+  };
+
+  const handleSaveProbation = async () => {
+    try {
+      setSavingProbation(true);
+      const response = await adminAPI.updateSystemConfig({
+        defaultProbationDuration: probationDuration
+      });
+      
+      if (response.success) {
+        toast({
+          title: 'Success',
+          description: 'Probation period settings updated successfully.',
+        });
+      } else {
+        throw new Error(response.message || 'Failed to update probation settings');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update probation settings',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingProbation(false);
+    }
+  };
 
   const handleRefresh = async () => {
     await refreshDashboardData();
@@ -184,6 +240,99 @@ const LeaveDashboardPage: React.FC<WithDashboardDataProps> = ({
                   </div>
                   <div className="p-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl">
                     <XCircle className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Pending User Approvals Widget */}
+          <PendingApprovalsWidget userRole="admin" maxItems={3} />
+
+          {/* Probation Period Settings */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-3xl blur-sm"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-white/20 shadow-xl rounded-3xl">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg">
+                      <UserCheck className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle>Probation Period Settings</CardTitle>
+                      <CardDescription className="mt-1">
+                        Configure default probation period duration for new employees
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleSaveProbation}
+                    disabled={savingProbation || loadingProbation}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    {savingProbation ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="defaultProbationDuration" className="text-sm font-medium text-slate-700">
+                        Default Probation Duration (Days)
+                      </Label>
+                      <Input
+                        id="defaultProbationDuration"
+                        type="number"
+                        min="30"
+                        max="365"
+                        value={probationDuration}
+                        onChange={(e) => setProbationDuration(parseInt(e.target.value, 10) || 90)}
+                        disabled={loadingProbation}
+                        className="mt-2 bg-white/50 border-slate-200/50 focus:border-purple-500 focus:ring-purple-500/20"
+                        placeholder="Enter default probation duration in days"
+                      />
+                      <p className="mt-2 text-xs text-slate-500">
+                        This duration will be applied to all new employees when they join. Range: 30-365 days (default: 90 days)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border border-purple-200/50">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Info className="h-4 w-4 text-purple-600" />
+                        <h4 className="text-sm font-semibold text-purple-900">About Probation Period</h4>
+                      </div>
+                      <ul className="text-xs text-purple-700 space-y-2 list-none">
+                        <li className="flex items-start gap-2">
+                          <span className="text-purple-500 mt-1">•</span>
+                          <span>Probation period is automatically set when an employee joins</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-purple-500 mt-1">•</span>
+                          <span>Leaves taken during probation are marked as unpaid</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-purple-500 mt-1">•</span>
+                          <span>Admins can edit individual employee probation dates from the Employees page</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-purple-500 mt-1">•</span>
+                          <span>Probation completion alerts appear on the admin dashboard</span>
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </CardContent>

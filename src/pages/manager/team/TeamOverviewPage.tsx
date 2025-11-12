@@ -49,6 +49,9 @@ import {
   Coffee,
   Home,
   Workflow,
+  Lock,
+  EyeOff,
+  Loader2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -71,6 +74,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { managerAPI } from '@/lib/api';
 import { User } from '@/types/auth';
@@ -119,6 +131,10 @@ const TeamOverviewPage: React.FC = () => {
 
   const [departments, setDepartments] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [resettingPasswordFor, setResettingPasswordFor] = useState<TeamMember | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   // Get unique status values from team members data
   const getUniqueStatuses = useCallback(() => {
@@ -480,6 +496,10 @@ const TeamOverviewPage: React.FC = () => {
                           <Edit className="h-4 w-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setResettingPasswordFor(member)}>
+                          <Lock className="h-4 w-4 mr-2" />
+                          Reset Password
+                        </DropdownMenuItem>
                         <DropdownMenuItem className="text-red-600">
                           <Trash2 className="h-4 w-4 mr-2" />
                           Remove
@@ -523,6 +543,122 @@ const TeamOverviewPage: React.FC = () => {
         )}
         </div>
       </div>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resettingPasswordFor} onOpenChange={(open) => {
+        if (!open) {
+          setResettingPasswordFor(null);
+          setNewPassword('');
+          setShowPassword(false);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-blue-600" />
+              Reset Password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new password for {resettingPasswordFor?.name} ({resettingPasswordFor?.email})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter new password (min 6 characters)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-slate-400" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Password must be at least 6 characters long. The team member will need to use this password to log in.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setResettingPasswordFor(null);
+                setNewPassword('');
+                setShowPassword(false);
+              }}
+              disabled={resettingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!resettingPasswordFor || !newPassword || newPassword.length < 6) {
+                  toast({
+                    title: 'Invalid Password',
+                    description: 'Password must be at least 6 characters long',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+
+                try {
+                  setResettingPassword(true);
+                  const response = await managerAPI.resetTeamMemberPassword(resettingPasswordFor.id, newPassword);
+                  
+                  if (response.success) {
+                    toast({
+                      title: 'Password Reset Successful',
+                      description: `Password has been reset for ${resettingPasswordFor.name}. They will need to use this new password to log in.`,
+                    });
+                    setResettingPasswordFor(null);
+                    setNewPassword('');
+                    setShowPassword(false);
+                  } else {
+                    throw new Error(response.message || 'Failed to reset password');
+                  }
+                } catch (error) {
+                  toast({
+                    title: 'Error',
+                    description: error instanceof Error ? error.message : 'Failed to reset password',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setResettingPassword(false);
+                }
+              }}
+              disabled={resettingPassword || !newPassword || newPassword.length < 6}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              {resettingPassword ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Reset Password
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -12,6 +12,9 @@ import PageHeader from '@/components/layout/PageHeader';
 import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
 import { LeaveRequest } from '@/types/leave';
 import AdminDashboardStatsCards from '@/components/dashboard/AdminDashboardStatsCards';
+import { adminAPI } from '@/lib/api/adminAPI';
+import { User } from '@/types/auth';
+import { toast } from '@/hooks/use-toast';
 import {
   Users,
   Clock,
@@ -37,7 +40,8 @@ import {
   Edit,
   Plus,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react';
 
 const AdminDashboard: React.FC<WithDashboardDataProps> = ({ 
@@ -47,9 +51,62 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [probationAlerts, setProbationAlerts] = useState<User[]>([]);
+  const [loadingProbationAlerts, setLoadingProbationAlerts] = useState(false);
 
   const handleRefresh = async () => {
     await refreshDashboardData();
+    await fetchProbationAlerts();
+  };
+
+  const fetchProbationAlerts = async () => {
+    try {
+      setLoadingProbationAlerts(true);
+      const response = await adminAPI.getProbationEndingSoon(7); // Next 7 days
+      if (response.success && response.data) {
+        setProbationAlerts(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching probation alerts:', error);
+    } finally {
+      setLoadingProbationAlerts(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProbationAlerts();
+  }, []);
+
+  const handleCompleteProbation = async (employeeId: string, employeeName: string) => {
+    try {
+      const response = await adminAPI.completeProbation(employeeId);
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: `${employeeName}'s probation has been marked as completed.`,
+          variant: "default"
+        });
+        await fetchProbationAlerts();
+        await refreshDashboardData();
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to complete probation",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const getDaysUntilProbationEnd = (endDate: Date | null | undefined): number => {
+    if (!endDate) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(0, 0, 0, 0);
+    const diffTime = end.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
   };
 
   // Use centralized dashboard data from HOC
@@ -65,7 +122,8 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
     status: String(request.status || 'pending'),
     submittedAt: request.submittedAt ? new Date(String(request.submittedAt)).toLocaleString() : 'N/A',
     avatar: request.employeeName ? String(request.employeeName).charAt(0).toUpperCase() : 'U',
-    priority: String(request.priority || 'normal')
+    priority: String(request.priority || 'normal'),
+    isPaid: request.isPaid !== undefined ? Boolean(request.isPaid) : true
   })) || [];
   
   // Map department stats to expected format (using mock data for now)
@@ -141,6 +199,82 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
         className="mb-8"
       />
 
+      {/* Probation Alerts */}
+      {probationAlerts.length > 0 && (
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 shadow-lg mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+              <span className="text-xl">Probation Ending Soon</span>
+              <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-800">
+                {probationAlerts.length} employee{probationAlerts.length !== 1 ? 's' : ''}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {probationAlerts.map((employee) => {
+                const daysLeft = getDaysUntilProbationEnd(employee.probationEndDate);
+                const isUrgent = daysLeft <= 3;
+                return (
+                  <div
+                    key={employee.id}
+                    className={`p-4 rounded-lg border-2 ${
+                      isUrgent 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-white border-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                          <AvatarFallback className="bg-gradient-to-br from-amber-500 to-orange-600 text-white font-semibold">
+                            {employee.name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-semibold text-slate-900">{employee.name}</p>
+                          <p className="text-sm text-slate-600">
+                            {employee.department || 'Unassigned'} • {employee.email}
+                          </p>
+                          <p className="text-sm text-slate-500 flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Ends: {employee.probationEndDate 
+                              ? new Date(employee.probationEndDate).toLocaleDateString()
+                              : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <Badge 
+                          variant={isUrgent ? "destructive" : "secondary"}
+                          className={isUrgent ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}
+                        >
+                          {daysLeft === 0 
+                            ? 'Ends Today' 
+                            : daysLeft === 1 
+                            ? '1 day left'
+                            : `${daysLeft} days left`}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          onClick={() => handleCompleteProbation(employee.id, employee.name)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Complete
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Main Content Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -197,6 +331,11 @@ const AdminDashboard: React.FC<WithDashboardDataProps> = ({
                         >
                           {request.status}
                         </Badge>
+                        {request.isPaid === false && (
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
+                            Unpaid
+                          </Badge>
+                        )}
                         <div className="text-right">
                           <p className="text-sm text-slate-500">{request.submittedAt}</p>
                           {request.priority === 'high' && (

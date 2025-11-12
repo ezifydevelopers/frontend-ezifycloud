@@ -728,6 +728,11 @@ const ManagerLeaveManagement: React.FC = () => {
                                   <Badge className={`text-xs ${getLeaveTypeColor(request.leaveType)}`}>
                                     {request.leaveType}
                                   </Badge>
+                                  {request.isPaid === false && (
+                                    <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                                      Unpaid
+                                    </Badge>
+                                  )}
                                   <Badge className={`text-xs ${getStatusColor(request.status)}`}>
                                     {getStatusIcon(request.status)}
                                     <span className="ml-1">{request.status}</span>

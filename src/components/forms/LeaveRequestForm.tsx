@@ -37,6 +37,7 @@ const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
       reason: z.string().min(10, 'Reason must be at least 10 characters'),
       isHalfDay: z.boolean().default(false),
       halfDayPeriod: z.enum(['morning', 'afternoon']).optional(),
+      shortLeaveHours: z.enum(['1', '2', '3']).optional(),
       emergencyContact: z.string().optional(),
       workHandover: z.string().optional(),
     }).refine(data => data.endDate >= data.startDate, {
@@ -45,6 +46,9 @@ const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
     }).refine(data => !data.isHalfDay || data.halfDayPeriod, {
       message: "Half day period is required when half day is selected",
       path: ["halfDayPeriod"],
+    }).refine(data => !(data.isHalfDay && data.shortLeaveHours), {
+      message: "Cannot select both half day and short leave",
+      path: ["isHalfDay"],
     });
   }
   
@@ -59,6 +63,7 @@ const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
     reason: z.string().min(10, 'Reason must be at least 10 characters'),
     isHalfDay: z.boolean().default(false),
     halfDayPeriod: z.enum(['morning', 'afternoon']).optional(),
+    shortLeaveHours: z.enum(['1', '2', '3']).optional(),
     emergencyContact: z.string().optional(),
     workHandover: z.string().optional(),
   }).refine(data => data.endDate >= data.startDate, {
@@ -67,6 +72,9 @@ const createLeaveRequestSchema = (policies: LeavePolicy[]) => {
   }).refine(data => !data.isHalfDay || data.halfDayPeriod, {
     message: "Half day period is required when half day is selected",
     path: ["halfDayPeriod"],
+  }).refine(data => !(data.isHalfDay && data.shortLeaveHours), {
+    message: "Cannot select both half day and short leave",
+    path: ["isHalfDay"],
   });
 };
 
@@ -77,6 +85,7 @@ type LeaveRequestFormData = {
   reason: string;
   isHalfDay?: boolean;
   halfDayPeriod?: 'morning' | 'afternoon';
+  shortLeaveHours?: 1 | 2 | 3;
   emergencyContact?: string;
   workHandover?: string;
 };
@@ -88,6 +97,7 @@ type LeaveRequestAPIData = {
   reason: string;
   isHalfDay: boolean;
   halfDayPeriod?: 'morning' | 'afternoon';
+  shortLeaveHours?: 1 | 2 | 3;
   emergencyContact: string;
   workHandover: string;
   attachments: string[];
@@ -120,6 +130,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   const startDate = watch('startDate');
   const endDate = watch('endDate');
   const isHalfDay = watch('isHalfDay');
+  const shortLeaveHours = watch('shortLeaveHours');
   const leaveType = watch('leaveType');
 
   // Fetch leave policies on component mount
@@ -206,6 +217,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   }, [user]);
 
   const calculateTotalDays = () => {
+    // Short leave: calculate based on hours (assuming 8 hours per day)
+    if (shortLeaveHours) {
+      return shortLeaveHours / 8; // 1 hour = 0.125, 2 hours = 0.25, 3 hours = 0.375
+    }
+    
+    // Half day
+    if (isHalfDay) {
+      return 0.5;
+    }
+    
+    // Full day(s)
     if (!startDate || !endDate || 
         !(startDate instanceof Date) || !(endDate instanceof Date) ||
         isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
@@ -213,7 +235,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
     }
     const timeDiff = endDate.getTime() - startDate.getTime();
     const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
-    return isHalfDay ? 0.5 : dayDiff;
+    return dayDiff;
   };
 
   const handleFormSubmit = async (data: LeaveRequestFormData) => {
@@ -243,6 +265,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
       console.log('🔍 LeaveRequestForm: WorkHandover field value:', data.workHandover);
       
       // Transform form data to API format
+      // Note: isPaid is auto-detected by backend from leave policy, no need to send it
       const leaveRequestData: LeaveRequestAPIData = {
         leaveType: data.leaveType,
         startDate: data.startDate instanceof Date && !isNaN(data.startDate.getTime()) ? data.startDate.toISOString() : new Date().toISOString(),
@@ -250,6 +273,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
         reason: data.reason,
         isHalfDay: data.isHalfDay || false,
         halfDayPeriod: data.isHalfDay ? data.halfDayPeriod : undefined,
+        shortLeaveHours: data.shortLeaveHours,
         emergencyContact: data.emergencyContact || '',
         workHandover: data.workHandover || '',
         attachments: documents.map(file => file.name),
@@ -321,10 +345,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {errors.leaveType && (
               <p className="text-sm text-destructive">{errors.leaveType.message}</p>
             )}
-            {/* Paid/Unpaid Indicator */}
+            {/* Paid/Unpaid Indicator (Read-only, auto-detected from policy) */}
             {leaveType && leavePolicies.length > 0 && (() => {
               const selectedPolicy = leavePolicies.find(p => p.leaveType === leaveType);
-              const isPaid = selectedPolicy?.isPaid ?? true;
+              // Handle both camelCase (isPaid) and snake_case (is_paid) field names
+              // Check if policy exists and has isPaid field, otherwise default to true (paid)
+              let isPaid = true; // Default to paid
+              if (selectedPolicy) {
+                // Check camelCase first (Prisma default), then snake_case (if API doesn't transform)
+                isPaid = selectedPolicy.isPaid ?? (selectedPolicy as any).is_paid ?? true;
+              }
+              
               return (
                 <div className="mt-2">
                   <Alert className={isPaid ? "border-green-200 bg-green-50" : "border-orange-200 bg-orange-50"}>
@@ -395,16 +426,68 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             </div>
           </div>
 
-          {/* Half Day Option */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="isHalfDay"
-              checked={isHalfDay}
-              onCheckedChange={(checked) => setValue('isHalfDay', checked as boolean)}
-            />
-            <Label htmlFor="isHalfDay" className="text-sm font-medium">
-              This is a half-day leave
-            </Label>
+          {/* Leave Duration Options */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Leave Duration</Label>
+            
+            {/* Short Leave Option */}
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="shortLeave"
+                  checked={!!shortLeaveHours}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setValue('shortLeaveHours', 1);
+                      setValue('isHalfDay', false);
+                      setValue('halfDayPeriod', undefined);
+                    } else {
+                      setValue('shortLeaveHours', undefined);
+                    }
+                  }}
+                />
+                <Label htmlFor="shortLeave" className="text-sm font-medium">
+                  Short Leave (Hours)
+                </Label>
+              </div>
+              {shortLeaveHours && (
+                <div className="ml-6 space-y-2">
+                  <Label htmlFor="shortLeaveHours" className="text-xs text-muted-foreground">
+                    Select hours
+                  </Label>
+                  <Select 
+                    value={shortLeaveHours?.toString()} 
+                    onValueChange={(value) => setValue('shortLeaveHours', parseInt(value) as 1 | 2 | 3)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select hours" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 Hour</SelectItem>
+                      <SelectItem value="2">2 Hours</SelectItem>
+                      <SelectItem value="3">3 Hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {/* Half Day Option */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="isHalfDay"
+                checked={isHalfDay}
+                onCheckedChange={(checked) => {
+                  setValue('isHalfDay', checked as boolean);
+                  if (checked) {
+                    setValue('shortLeaveHours', undefined);
+                  }
+                }}
+              />
+              <Label htmlFor="isHalfDay" className="text-sm font-medium">
+                Half Day Leave
+              </Label>
+            </div>
           </div>
 
           {/* Half Day Period */}
@@ -445,12 +528,34 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                     </span>
                   </div>
                   {leaveBalance[leaveType].remaining < calculateTotalDays() && (
-                    <div className="text-red-700 font-semibold text-sm bg-red-100 p-2 rounded border border-red-200">
-                      ⚠️ Leave Limit Exceeded: You have {leaveBalance[leaveType].remaining} days remaining but requested {calculateTotalDays()} days.
-                      <br />
-                      <span className="text-xs font-normal mt-1 block">
-                        Your request will be rejected. Please contact your manager/admin to add additional leave days or reduce your request.
-                      </span>
+                    <div className="text-orange-700 font-semibold text-sm bg-orange-50 p-3 rounded-lg border-2 border-orange-300 shadow-sm">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <div className="font-semibold text-base">
+                            Leave Balance Exceeded
+                          </div>
+                          <div className="text-sm space-y-1">
+                            <p>
+                              You have <strong className="text-orange-800">{leaveBalance[leaveType].remaining}</strong> day{leaveBalance[leaveType].remaining !== 1 ? 's' : ''} remaining, 
+                              but requested <strong className="text-orange-800">{calculateTotalDays()}</strong> day{calculateTotalDays() !== 1 ? 's' : ''}.
+                            </p>
+                            <p className="text-xs text-orange-700 mt-2 pt-2 border-t border-orange-200 font-medium">
+                              <strong>⚠️ Important Notice:</strong>
+                            </p>
+                            <p className="text-xs text-orange-600">
+                              This leave request will be marked as <strong>Unpaid Leave</strong> because it exceeds your available balance. Excess days ({calculateTotalDays() - leaveBalance[leaveType].remaining} day{(calculateTotalDays() - leaveBalance[leaveType].remaining) !== 1 ? 's' : ''}) will be deducted from your salary. Your request can still be submitted, but you'll be charged for the excess days.
+                            </p>
+                            <p className="text-xs text-orange-600 mt-2 pt-2 border-t border-orange-200">
+                              <strong>Alternative options:</strong>
+                            </p>
+                            <ul className="text-xs text-orange-600 list-disc list-inside space-y-1 ml-2">
+                              <li>Reduce your leave request to {leaveBalance[leaveType].remaining} day{leaveBalance[leaveType].remaining !== 1 ? 's' : ''} or less to avoid salary deduction</li>
+                              <li>Contact your manager or admin to request additional leave days (they can add days from Team Overview or Employee Management page)</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                   {leaveBalance[leaveType].remaining >= calculateTotalDays() && leaveBalance[leaveType].remaining < calculateTotalDays() + 2 && (
@@ -464,13 +569,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
           )}
 
           {/* Total Days Display */}
-          {startDate && endDate && 
+          {(shortLeaveHours || isHalfDay || (startDate && endDate && 
            startDate instanceof Date && endDate instanceof Date &&
-           !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && (
+           !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()))) && (
             <Alert>
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
-                Total leave duration: <strong>{calculateTotalDays()} day{calculateTotalDays() !== 1 ? 's' : ''}</strong>
+                {shortLeaveHours ? (
+                  <span>Total leave duration: <strong>{shortLeaveHours} hour{shortLeaveHours !== 1 ? 's' : ''}</strong> ({calculateTotalDays()} day{calculateTotalDays() !== 1 ? 's' : ''})</span>
+                ) : (
+                  <span>Total leave duration: <strong>{calculateTotalDays()} day{calculateTotalDays() !== 1 ? 's' : ''}</strong></span>
+                )}
               </AlertDescription>
             </Alert>
           )}

@@ -147,11 +147,11 @@ const RequestLeave: React.FC = () => {
         
         // Check if it's a business rules validation error
         if (errorMessage.includes('Insufficient leave balance')) {
-          // This is a specific business rule error - show it clearly with icon
+          // This is a specific business rule error - show it as warning
           toast({
             title: "⚠️ Insufficient Leave Balance",
             description: `${errorMessage}\n\nPlease adjust your leave request to match your available balance.`,
-            variant: 'destructive',
+            variant: 'default', // Show as warning, not error
             duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
           });
         } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
@@ -178,11 +178,11 @@ const RequestLeave: React.FC = () => {
             variant: 'default', // Use default variant for warnings
             duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
           });
-        } else if (errorMessage.includes('overlaps with') || errorMessage.includes('overlapping')) {
+        } else if (errorMessage.includes('overlaps with') || errorMessage.includes('overlapping') || errorMessage.includes('already have')) {
           // This is an overlapping request warning - show it as a warning, not error
           toast({
-            title: "📋 Overlapping Leave Period",
-            description: `${errorMessage}\n\nPlease review overlapping periods with your manager.`,
+            title: "⚠️ Overlapping Leave Request",
+            description: `${errorMessage}\n\nYou already have a pending or approved leave request for this period. Please check your leave history or choose different dates.`,
             variant: 'default', // Use default variant for warnings
             duration: APP_CONFIG.UI.TOAST_DURATION.LONG,
           });

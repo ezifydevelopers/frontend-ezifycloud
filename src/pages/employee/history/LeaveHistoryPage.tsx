@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import LeaveRequestDetails from '@/components/leave/LeaveRequestDetails';
+import { LeaveRequest as LeaveRequestType } from '@/types/leave';
 import { 
   Clock, 
   Search, 
@@ -78,6 +80,7 @@ const LeaveHistoryPage: React.FC = () => {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveBalance, setLeaveBalance] = useState<{ [key: string]: { remaining: number; total: number; used: number } }>({});
   const [loading, setLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<LeaveRequestType | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     status: 'all',
@@ -571,7 +574,34 @@ const LeaveHistoryPage: React.FC = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-white/95 backdrop-blur-sm border-white/20">
-                            <DropdownMenuItem className="hover:bg-blue-50 hover:text-blue-700">
+                            <DropdownMenuItem 
+                              className="hover:bg-blue-50 hover:text-blue-700"
+                              onClick={() => {
+                                // Convert local LeaveRequest to LeaveRequestType format
+                                const detailRequest: LeaveRequestType = {
+                                  id: request.id,
+                                  leaveType: request.leaveType as any,
+                                  startDate: request.startDate,
+                                  endDate: request.endDate,
+                                  totalDays: request.days,
+                                  reason: request.reason,
+                                  status: request.status,
+                                  priority: request.priority || 'medium',
+                                  isPaid: true, // Default, can be updated if available
+                                  isHalfDay: request.isHalfDay || false,
+                                  halfDayPeriod: request.halfDayPeriod as any,
+                                  submittedAt: request.submittedAt,
+                                  employee: {
+                                    id: user?.id || '',
+                                    name: user?.name || 'Unknown',
+                                    email: user?.email || '',
+                                    department: user?.department || 'Unassigned',
+                                    avatar: user?.profilePicture || undefined
+                                  }
+                                };
+                                setSelectedRequest(detailRequest);
+                              }}
+                            >
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
@@ -600,6 +630,15 @@ const LeaveHistoryPage: React.FC = () => {
 
         </div>
       </div>
+      
+      {/* Leave Request Details Modal */}
+      {selectedRequest && (
+        <LeaveRequestDetails
+          request={selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          canApprove={false}
+        />
+      )}
     </div>
   );
 };

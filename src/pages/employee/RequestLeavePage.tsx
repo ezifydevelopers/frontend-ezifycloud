@@ -76,22 +76,30 @@ const RequestLeavePage: React.FC = () => {
         
         let title = "❌ Leave Request Failed";
         let description = errorMessage;
+        let variant: 'default' | 'destructive' = 'destructive';
         
-        if (errorMessage.includes('already have a leave request')) {
+        if (errorMessage.includes('already have a leave request') || errorMessage.includes('overlapping')) {
           title = "⚠️ Overlapping Leave Request";
           description = `${errorMessage}\n\nYou already have a pending or approved leave request for this period. Please check your leave history or choose different dates.`;
+          variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('Insufficient leave balance')) {
           title = "⚠️ Insufficient Leave Balance";
           description = `${errorMessage}\n\nPlease adjust your leave request to match your available balance.`;
+          variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('Policy violation')) {
           title = "⚠️ Policy Violation";
           description = `${errorMessage}\n\nYour request violates leave policy rules. Please review and adjust.`;
+          variant = 'default'; // Show as warning, not error
+        } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
+          title = "💰 Salary Deduction Notice";
+          description = `${errorMessage}\n\nYour request will be processed with salary deduction for excess days.`;
+          variant = 'default'; // Show as warning, not error
         }
         
         toast({
           title,
           description,
-          variant: 'destructive',
+          variant,
           duration: 8000,
         });
       }
@@ -105,21 +113,30 @@ const RequestLeavePage: React.FC = () => {
         let title = "❌ Error";
         let description = errorMessage;
         
+        let variant: 'default' | 'destructive' = 'destructive';
+        
         if (errorMessage.includes('already have a leave request') || errorMessage.includes('overlapping')) {
           title = "⚠️ Overlapping Leave Request";
           description = `${errorMessage}\n\nYou already have a pending or approved leave request for this period. Please check your leave history or choose different dates.`;
+          variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('Insufficient leave balance')) {
           title = "⚠️ Insufficient Leave Balance";
           description = `${errorMessage}\n\nPlease adjust your leave request.`;
+          variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('Policy violation')) {
           title = "⚠️ Policy Violation";
           description = `${errorMessage}\n\nYour request violates leave policy rules.`;
+          variant = 'default'; // Show as warning, not error
+        } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
+          title = "💰 Salary Deduction Notice";
+          description = `${errorMessage}\n\nYour request will be processed with salary deduction for excess days.`;
+          variant = 'default'; // Show as warning, not error
         }
         
         toast({
           title,
           description,
-          variant: 'destructive',
+          variant,
           duration: 8000,
         });
       } else {

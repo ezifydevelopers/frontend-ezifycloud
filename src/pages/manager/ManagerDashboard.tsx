@@ -13,6 +13,7 @@ import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/with
 import DashboardStatsCards from '@/components/dashboard/DashboardStatsCards';
 import TeamStatusCard from '@/components/dashboard/TeamStatusCard';
 import TeamCapacityOverview from '@/components/capacity/TeamCapacityOverview';
+import PendingApprovalsWidget from '@/components/dashboard/PendingApprovalsWidget';
 import {
   Users,
   Clock,
@@ -172,6 +173,9 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Pending User Approvals Widget */}
+            <PendingApprovalsWidget userRole="manager" maxItems={3} />
+
             {/* Team Capacity Overview - Widget */}
             <TeamCapacityOverview
               variant="widget"

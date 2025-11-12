@@ -167,6 +167,12 @@ const SecondarySidebar: React.FC<SecondarySidebarProps> = ({ systemType, onClose
           href: '/admin/leave-management/holidays',
           description: 'Manage public holidays'
         },
+        {
+          icon: DollarSign,
+          label: 'Paid & Unpaid Leaves',
+          href: '/admin/leave-management/paid-unpaid-leaves',
+          description: 'View detailed paid and unpaid leave statistics'
+        },
       ]
     },
     {
@@ -194,12 +200,6 @@ const SecondarySidebar: React.FC<SecondarySidebarProps> = ({ systemType, onClose
           label: 'Office Capacity',
           href: '/admin/capacity',
           description: 'Manage office capacity and availability'
-        },
-        {
-          icon: Building2,
-          label: 'Employee Capacity',
-          href: '/admin/employee-capacity-management',
-          description: 'Manage employee capacity and workload'
         },
         {
           icon: Activity,
@@ -251,10 +251,17 @@ const SecondarySidebar: React.FC<SecondarySidebarProps> = ({ systemType, onClose
   ];
 
   const getNavSections = () => {
-    if (systemType === 'leave') {
-      return leaveNavSections;
-    }
-    return invoiceNavSections;
+    const sections = systemType === 'leave' ? leaveNavSections : invoiceNavSections;
+    
+    // Filter out User Approvals items and remove empty sections
+    return sections
+      .map(section => ({
+        ...section,
+        items: section.items.filter(item => 
+          !item.href.includes('user-approvals') && item.label !== 'User Approvals'
+        )
+      }))
+      .filter(section => section.items.length > 0);
   };
 
   const getSystemName = () => {

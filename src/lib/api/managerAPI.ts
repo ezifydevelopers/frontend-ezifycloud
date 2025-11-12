@@ -59,6 +59,9 @@ export const managerAPI = {
   
   getTeamMemberById: (id: string): Promise<ApiResponse<User>> => apiRequest(`/manager/team/members/${id}`),
   
+  getTeamMemberEditHistory: (id: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<PaginatedResponse<unknown>>> =>
+    apiRequest(`/manager/team/members/${id}/edit-history${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  
   addTeamMember: (memberData: AddTeamMemberRequest): Promise<ApiResponse<User>> =>
     apiRequest('/manager/team/members', {
       method: 'POST',
@@ -88,6 +91,21 @@ export const managerAPI = {
   
   getTeamMemberLeaveBalance: (id: string): Promise<ApiResponse<LeaveBalance>> => 
     apiRequest(`/manager/team/members/${id}/leave-balance`),
+
+  // User Approvals
+  getPendingUserApprovals: (params?: { page?: number; limit?: number }): Promise<ApiResponse<PaginatedResponse<User>>> => 
+    apiRequest(`/manager/team/pending-approvals${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+
+  approveUserAccess: (userId: string): Promise<ApiResponse<User>> =>
+    apiRequest(`/manager/team/users/${userId}/approve`, {
+      method: 'POST',
+    }),
+
+  rejectUserAccess: (userId: string, reason?: string): Promise<ApiResponse<User>> =>
+    apiRequest(`/manager/team/users/${userId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
   
   adjustTeamMemberLeaveBalance: (id: string, data: { leaveType: string; additionalDays: number; reason: string }, year?: string): Promise<ApiResponse<Record<string, unknown>>> =>
     apiRequest(`/manager/team/members/${id}/leave-balance/adjust${year ? `?year=${year}` : ''}`, {
@@ -259,5 +277,11 @@ export const managerAPI = {
   
   calculateTeamMemberSalary: (userId: string, params?: { year?: number; month?: number }): Promise<ApiResponse<SalaryCalculation>> => 
     apiRequest(`/manager/salaries/calculate/${userId}${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+
+  resetTeamMemberPassword: (memberId: string, newPassword: string): Promise<ApiResponse<{ memberId: string; email: string; name: string }>> =>
+    apiRequest(`/manager/team/members/${memberId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    }),
 };
 

@@ -310,7 +310,7 @@ const LoginForm: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-center">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <input
                       id="remember"
@@ -321,6 +321,12 @@ const LoginForm: React.FC = () => {
                       Remember me
                     </Label>
                   </div>
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
+                  >
+                    Forgot Password?
+                  </Link>
                 </div>
 
                 <Button 

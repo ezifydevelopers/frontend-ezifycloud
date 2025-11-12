@@ -45,6 +45,7 @@ import LeaveDashboardPage from "@/pages/admin/leave/LeaveDashboardPage";
 import LeaveRequestsPage from "@/pages/admin/leave/LeaveRequestsPage";
 import LeavePoliciesPage from "@/pages/admin/leave/LeavePoliciesPage";
 import AdminHolidaysPage from "@/pages/admin/leave/HolidaysPage";
+import PaidUnpaidLeavesPage from "@/pages/admin/leave/PaidUnpaidLeavesPage";
 import HolidaysPage from "@/pages/admin/holidays/HolidaysPage";
 import AttendancePage from "@/pages/admin/attendance/AttendancePage";
 import SalaryManagementPage from "@/pages/admin/salary/SalaryManagementPage";
@@ -66,6 +67,7 @@ import ManagerRequestLeave from "@/pages/manager/RequestLeave";
 import ManagerLeaveManagement from "@/pages/manager/ManagerLeaveManagement";
 import ManagerLeaveHistoryPage from "@/pages/manager/history/LeaveHistoryPage";
 import TeamSalaryPage from "@/pages/manager/salary/TeamSalaryPage";
+import ManagerUserApprovalsPage from "@/pages/manager/UserApprovalsPage";
 
 // Employee Pages
 import RequestLeave from "@/pages/employee/RequestLeave";
@@ -206,6 +208,14 @@ const App = () => (
               </ProtectedRoute>
             } />
             
+            <Route path="/admin/leave-management/paid-unpaid-leaves" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <DashboardLayout>
+                  <PaidUnpaidLeavesPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/admin/leave-management/reports" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>
@@ -214,7 +224,7 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            <Route path="/admin/employee-capacity-management" element={
+            <Route path="/admin/employee-capacity" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>
                   <EmployeeCapacityManagementPage />
@@ -306,6 +316,14 @@ const App = () => (
               <ProtectedRoute allowedRoles={['manager']}>
                 <DashboardLayout>
                   <ApprovalsPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/manager/user-approvals" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <ManagerUserApprovalsPage />
                 </DashboardLayout>
               </ProtectedRoute>
             } />

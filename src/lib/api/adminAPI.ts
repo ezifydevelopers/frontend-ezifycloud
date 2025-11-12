@@ -57,6 +57,36 @@ export const adminAPI = {
   
   getEmployeeById: (id: string): Promise<ApiResponse<User>> => apiRequest(`/admin/employees/${id}`),
   
+  getEmployeeEditHistory: (id: string, params?: { page?: number; limit?: number }): Promise<ApiResponse<PaginatedResponse<AuditLog>>> =>
+    apiRequest(`/admin/employees/${id}/edit-history${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+
+  getPaidUnpaidLeaveStats: (params?: { department?: string; year?: number; employeeId?: string }): Promise<ApiResponse<Array<{
+    employeeId: string;
+    employeeName: string;
+    employeeEmail: string;
+    department: string | null;
+    totalPaidDays: number;
+    totalUnpaidDays: number;
+    totalDays: number;
+    byLeaveType: Array<{
+      leaveType: string;
+      paidDays: number;
+      unpaidDays: number;
+      totalDays: number;
+    }>;
+    leaveRequests: Array<{
+      id: string;
+      leaveType: string;
+      startDate: string;
+      endDate: string;
+      totalDays: number;
+      isPaid: boolean;
+      status: string;
+      submittedAt: string;
+    }>;
+  }>>> =>
+    apiRequest(`/admin/employees/paid-unpaid-leaves${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  
   createEmployee: (employeeData: CreateEmployeeRequest): Promise<ApiResponse<User>> =>
     apiRequest('/admin/employees', {
       method: 'POST',
@@ -214,6 +244,15 @@ export const adminAPI = {
       method: 'PUT',
       body: JSON.stringify(companyData),
     }),
+
+  getSystemConfig: (): Promise<ApiResponse<{ defaultProbationDuration?: number; [key: string]: any }>> =>
+    apiRequest('/admin/settings/system-config'),
+
+  updateSystemConfig: (configData: { defaultProbationDuration?: number; [key: string]: any }): Promise<ApiResponse<any>> =>
+    apiRequest('/admin/settings/system-config', {
+      method: 'PUT',
+      body: JSON.stringify(configData),
+    }),
   
   updateNotificationSettings: (settings: UpdateNotificationSettingsRequest): Promise<ApiResponse<NotificationSettings>> =>
     apiRequest('/admin/settings/notifications', {
@@ -356,6 +395,28 @@ export const adminAPI = {
   terminateProbation: (employeeId: string): Promise<ApiResponse<User>> =>
     apiRequest(`/admin/employees/${employeeId}/probation/terminate`, {
       method: 'POST',
+    }),
+
+  updateProbation: (
+    employeeId: string,
+    data: {
+      probationStartDate?: string;
+      probationEndDate?: string;
+      probationDuration?: number;
+    }
+  ): Promise<ApiResponse<User>> =>
+    apiRequest(`/admin/employees/${employeeId}/probation`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getProbationEndingSoon: (days?: number): Promise<ApiResponse<User[]>> =>
+    apiRequest(`/admin/employees/probation/ending-soon${days ? `?days=${days}` : ''}`),
+
+  resetEmployeePassword: (employeeId: string, newPassword: string): Promise<ApiResponse<{ employeeId: string; email: string; name: string }>> =>
+    apiRequest(`/admin/employees/${employeeId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
     }),
 };
 

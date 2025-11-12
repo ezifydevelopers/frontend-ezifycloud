@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,12 +16,14 @@ import {
   RefreshCw,
   Activity,
   CheckCircle,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { adminAPI } from '@/lib/api';
+import { adminAPI } from '@/lib/api/adminAPI';
 import PageHeader from '@/components/layout/PageHeader';
 
 const SettingsPage: React.FC = () => {
+  const location = useLocation();
   const [settings, setSettings] = useState({
     // Company Settings
     companyName: 'Ezify Cloud',
@@ -29,6 +32,8 @@ const SettingsPage: React.FC = () => {
     companyAddress: '123 Business St, City, State 12345',
     timezone: 'UTC-5',
     companyWebsite: 'https://ezifycloud.com',
+    // Probation Settings
+    defaultProbationDuration: 90, // days
   });
 
   const [loading, setLoading] = useState(false);
@@ -42,26 +47,36 @@ const SettingsPage: React.FC = () => {
       setLoading(true);
       console.log('🔍 SettingsPage: Fetching settings...');
       
-      const response = await adminAPI.getSettings();
-      console.log('🔍 SettingsPage: Settings response:', response);
+      const [settingsResponse, systemConfigResponse] = await Promise.all([
+        adminAPI.getSettings(),
+        adminAPI.getSystemConfig().catch(() => ({ success: false, data: null }))
+      ]);
       
-      if (response.success && response.data) {
+      console.log('🔍 SettingsPage: Settings response:', settingsResponse);
+      console.log('🔍 SettingsPage: System config response:', systemConfigResponse);
+      
+      if (settingsResponse.success && settingsResponse.data) {
         // Update settings with real data from API
         setSettings(prevSettings => ({
           ...prevSettings,
           // Company Settings
-          companyName: response.data.company?.name || prevSettings.companyName,
-          companyEmail: response.data.company?.email || prevSettings.companyEmail,
-          companyPhone: response.data.company?.phone || prevSettings.companyPhone,
-          companyAddress: response.data.company?.address || prevSettings.companyAddress,
-          timezone: response.data.company?.timezone || prevSettings.timezone,
-          companyWebsite: response.data.company?.website || prevSettings.companyWebsite,
+          companyName: settingsResponse.data.company?.name || prevSettings.companyName,
+          companyEmail: settingsResponse.data.company?.email || prevSettings.companyEmail,
+          companyPhone: settingsResponse.data.company?.phone || prevSettings.companyPhone,
+          companyAddress: settingsResponse.data.company?.address || prevSettings.companyAddress,
+          timezone: settingsResponse.data.company?.timezone || prevSettings.timezone,
+          companyWebsite: settingsResponse.data.company?.website || prevSettings.companyWebsite,
         }));
-        
-        console.log('✅ SettingsPage: Settings loaded successfully');
-      } else {
-        console.warn('❌ SettingsPage: No settings data received, using defaults');
       }
+      
+      if (systemConfigResponse.success && systemConfigResponse.data) {
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          defaultProbationDuration: systemConfigResponse.data?.defaultProbationDuration || prevSettings.defaultProbationDuration,
+        }));
+      }
+        
+      console.log('✅ SettingsPage: Settings loaded successfully');
     } catch (error) {
       console.error('❌ SettingsPage: Error fetching settings:', error);
       toast({
@@ -90,6 +105,11 @@ const SettingsPage: React.FC = () => {
             address: settings.companyAddress,
             website: settings.companyWebsite,
             timezone: settings.timezone,
+          });
+          break;
+        case 'probation':
+          response = await adminAPI.updateSystemConfig({
+            defaultProbationDuration: settings.defaultProbationDuration,
           });
           break;
           
@@ -229,10 +249,13 @@ const SettingsPage: React.FC = () => {
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-sm group-hover:blur-md transition-all duration-300"></div>
             <Card className="relative bg-white/90 backdrop-blur-sm border-white/30 shadow-xl rounded-3xl">
               <CardContent className="p-6">
-                <Tabs defaultValue="company" className="space-y-6">
-                  <TabsList className="grid w-full grid-cols-1 bg-slate-100/50 rounded-2xl p-1">
+                <Tabs defaultValue={location.state?.tab || 'company'} className="space-y-6">
+                  <TabsList className="grid w-full grid-cols-2 bg-slate-100/50 rounded-2xl p-1">
                     <TabsTrigger value="company" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">
                       Company Information
+                    </TabsTrigger>
+                    <TabsTrigger value="probation" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                      Probation Settings
                     </TabsTrigger>
                   </TabsList>
 
@@ -323,6 +346,66 @@ const SettingsPage: React.FC = () => {
                               className="mt-1 bg-white/50 border-slate-200/50 focus:border-blue-500 focus:ring-blue-500/20"
                               placeholder="Enter timezone"
                             />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  {/* Probation Settings */}
+                  <TabsContent value="probation">
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+                            <UserCheck className="h-5 w-5 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-slate-800">Probation Period Settings</h3>
+                            <p className="text-sm text-slate-600">Configure default probation period duration for new employees</p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => handleSave('Probation')}
+                          disabled={loading}
+                          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl transition-all duration-200"
+                        >
+                          <Save className="mr-2 h-4 w-4" />
+                          {loading ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="defaultProbationDuration" className="text-sm font-medium text-slate-700">
+                              Default Probation Duration (Days)
+                            </Label>
+                            <Input
+                              id="defaultProbationDuration"
+                              type="number"
+                              min="30"
+                              max="365"
+                              value={settings.defaultProbationDuration}
+                              onChange={(e) => handleInputChange('defaultProbationDuration', parseInt(e.target.value, 10) || 90)}
+                              className="mt-1 bg-white/50 border-slate-200/50 focus:border-purple-500 focus:ring-purple-500/20"
+                              placeholder="Enter default probation duration in days"
+                            />
+                            <p className="mt-1 text-xs text-slate-500">
+                              This duration will be applied to all new employees when they join. 
+                              Range: 30-365 days (default: 90 days)
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border border-purple-200/50">
+                            <h4 className="text-sm font-semibold text-purple-900 mb-2">About Probation Period</h4>
+                            <ul className="text-xs text-purple-700 space-y-1 list-disc list-inside">
+                              <li>Probation period is automatically set when an employee joins</li>
+                              <li>Leaves taken during probation are marked as unpaid</li>
+                              <li>Admins can edit individual employee probation dates from the Employees page</li>
+                              <li>Probation completion alerts appear on the admin dashboard</li>
+                            </ul>
                           </div>
                         </div>
                       </div>

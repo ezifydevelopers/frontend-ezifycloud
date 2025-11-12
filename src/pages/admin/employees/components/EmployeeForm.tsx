@@ -38,6 +38,8 @@ const employeeSchema = z.object({
   employeeType: z.enum(['onshore', 'offshore']).optional().nullable(),
   region: z.string().optional().nullable(),
   timezone: z.string().optional().nullable(),
+  joinDate: z.string().optional().nullable(),
+  probationStatus: z.enum(['active', 'completed', 'extended', 'terminated']).optional().nullable(),
 }).refine((data) => {
   // If creating new employee, password is required and must meet backend requirements
   if (!data.password) return true; // Will be handled in onSubmit
@@ -82,6 +84,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
       employeeType: employee?.employeeType || null,
       region: employee?.region || null,
       timezone: employee?.timezone || null,
+      joinDate: employee?.joinDate ? new Date(employee.joinDate).toISOString().split('T')[0] : '',
+      probationStatus: employee?.probationStatus || null,
     },
   });
 
@@ -112,6 +116,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
           employeeType: data.employeeType,
           region: data.region,
           timezone: data.timezone,
+          joinDate: data.joinDate ? new Date(data.joinDate).toISOString() : null,
+          probationStatus: data.probationStatus,
         };
         await adminAPI.updateEmployee(employee!.id, updateData);
         toast({
@@ -284,14 +290,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="employeeType">Employee Type</Label>
                 <Select
-                  value={watch('employeeType') || ''}
-                  onValueChange={(value) => setValue('employeeType', value === 'none' ? null : value as 'onshore' | 'offshore')}
+                  value={watch('employeeType') || 'not_specified'}
+                  onValueChange={(value) => setValue('employeeType', value === 'not_specified' ? null : value as 'onshore' | 'offshore')}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select employee type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Not Specified</SelectItem>
+                    <SelectItem value="not_specified">Not Specified</SelectItem>
                     <SelectItem value="onshore">Onshore</SelectItem>
                     <SelectItem value="offshore">Offshore</SelectItem>
                   </SelectContent>
@@ -314,14 +320,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
               <Select
-                value={watch('timezone') || ''}
-                onValueChange={(value) => setValue('timezone', value || null)}
+                value={watch('timezone') || 'not_specified'}
+                onValueChange={(value) => setValue('timezone', value === 'not_specified' ? null : value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select timezone" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Not Specified</SelectItem>
+                  <SelectItem value="not_specified">Not Specified</SelectItem>
                   <SelectItem value="America/New_York">Eastern Time (ET)</SelectItem>
                   <SelectItem value="America/Chicago">Central Time (CT)</SelectItem>
                   <SelectItem value="America/Denver">Mountain Time (MT)</SelectItem>
@@ -335,6 +341,40 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
                   <SelectItem value="Australia/Sydney">Sydney (AEST)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {/* Joining Date and Probation Status - Only when editing */}
+          {isEditing && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="joinDate">Joining Date</Label>
+                <Input
+                  id="joinDate"
+                  type="date"
+                  value={watch('joinDate') || ''}
+                  onChange={(e) => setValue('joinDate', e.target.value || null)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="probationStatus">Probation Status</Label>
+                <Select
+                  value={watch('probationStatus') || 'not_set'}
+                  onValueChange={(value) => setValue('probationStatus', value === 'not_set' ? null : value as 'active' | 'completed' | 'extended' | 'terminated')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select probation status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_set">Not Set</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="extended">Extended</SelectItem>
+                    <SelectItem value="terminated">Terminated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 

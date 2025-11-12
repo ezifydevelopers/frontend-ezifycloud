@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +36,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -53,6 +58,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -86,6 +100,7 @@ interface LeaveBalance {
 }
 
 const EmployeesPage: React.FC = () => {
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -105,6 +120,16 @@ const EmployeesPage: React.FC = () => {
   const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
   const [showLeaveBalanceModal, setShowLeaveBalanceModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<User | null>(null);
+  const [editingProbation, setEditingProbation] = useState<User | null>(null);
+  const [probationFormData, setProbationFormData] = useState({
+    probationStartDate: '',
+    probationEndDate: '',
+    probationDuration: 90
+  });
+  const [resettingPasswordFor, setResettingPasswordFor] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -206,6 +231,42 @@ const EmployeesPage: React.FC = () => {
       console.error('Error fetching leave balance for employee:', employeeId, error);
     } finally {
       setLoadingBalances(prev => ({ ...prev, [employeeId]: false }));
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingPasswordFor || !newPassword || newPassword.length < 6) {
+      toast({
+        title: 'Invalid Password',
+        description: 'Password must be at least 6 characters long',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setResettingPassword(true);
+      const response = await adminAPI.resetEmployeePassword(resettingPasswordFor.id, newPassword);
+      
+      if (response.success) {
+        toast({
+          title: 'Password Reset Successful',
+          description: `Password has been reset for ${resettingPasswordFor.name}. They will need to use this new password to log in.`,
+        });
+        setResettingPasswordFor(null);
+        setNewPassword('');
+        setShowPassword(false);
+      } else {
+        throw new Error(response.message || 'Failed to reset password');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to reset password',
+        variant: 'destructive',
+      });
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -406,20 +467,47 @@ const EmployeesPage: React.FC = () => {
     setShowLeaveBalanceModal(true);
   };
 
-  // Calculate probation statistics
+  // Calculate probation status helper function
+  const calculateProbationStatus = (employee: User): { status: string | null; endDate: Date | null } => {
+    if (employee.role !== 'employee') {
+      return { status: null, endDate: null };
+    }
+    if (employee.probationStatus) {
+      return { 
+        status: employee.probationStatus, 
+        endDate: employee.probationEndDate ? new Date(employee.probationEndDate) : null 
+      };
+    }
+    const startDate = employee.joinDate ? new Date(employee.joinDate) : new Date(employee.createdAt);
+    const today = new Date();
+    const defaultProbationDuration = employee.probationDuration || 90;
+    const probationEndDate = new Date(startDate.getTime() + defaultProbationDuration * 24 * 60 * 60 * 1000);
+    if (today < probationEndDate) {
+      return { status: 'active', endDate: probationEndDate };
+    } else {
+      return { status: 'completed', endDate: probationEndDate };
+    }
+  };
+
+  // Calculate probation statistics (including auto-calculated status)
   const probationStats = {
-    inProbation: employees.filter(emp => 
-      emp.role === 'employee' && 
-      (emp.probationStatus === 'active' || emp.probationStatus === 'extended')
-    ).length,
-    completed: employees.filter(emp => 
-      emp.role === 'employee' && emp.probationStatus === 'completed'
-    ).length,
+    inProbation: employees.filter(emp => {
+      if (emp.role !== 'employee') return false;
+      const probationInfo = calculateProbationStatus(emp);
+      const status = probationInfo.status || emp.probationStatus;
+      return status === 'active' || status === 'extended';
+    }).length,
+    completed: employees.filter(emp => {
+      if (emp.role !== 'employee') return false;
+      const probationInfo = calculateProbationStatus(emp);
+      const status = probationInfo.status || emp.probationStatus;
+      return status === 'completed';
+    }).length,
     terminated: employees.filter(emp => 
       emp.role === 'employee' && emp.probationStatus === 'terminated'
     ).length,
     noProbation: employees.filter(emp => 
-      emp.role === 'employee' && !emp.probationStatus
+      emp.role === 'employee' && !emp.probationStatus && !calculateProbationStatus(emp).status
     ).length,
   };
 
@@ -435,12 +523,16 @@ const EmployeesPage: React.FC = () => {
     // Filter by active tab (probation status)
     let matchesProbationTab = true;
     if (activeTab === 'probation') {
-      // Show employees in active or extended probation
+      // Show employees in active or extended probation (including auto-calculated)
+      const probationInfo = calculateProbationStatus(employee);
+      const status = probationInfo.status || employee.probationStatus;
       matchesProbationTab = employee.role === 'employee' && 
-        (employee.probationStatus === 'active' || employee.probationStatus === 'extended');
+        (status === 'active' || status === 'extended');
     } else if (activeTab === 'completed') {
-      // Show employees who completed probation
-      matchesProbationTab = employee.role === 'employee' && employee.probationStatus === 'completed';
+      // Show employees who completed probation (including auto-calculated)
+      const probationInfo = calculateProbationStatus(employee);
+      const status = probationInfo.status || employee.probationStatus;
+      matchesProbationTab = employee.role === 'employee' && status === 'completed';
     }
     // 'all' tab shows everyone
     
@@ -510,6 +602,50 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
+
+  // Calculate employee tenure (days, months, years)
+  const calculateTenure = (employee: User): { years: number; months: number; days: number; display: string } => {
+    const startDate = employee.joinDate 
+      ? new Date(employee.joinDate) 
+      : new Date(employee.createdAt);
+    const today = new Date();
+    
+    let years = today.getFullYear() - startDate.getFullYear();
+    let months = today.getMonth() - startDate.getMonth();
+    let days = today.getDate() - startDate.getDate();
+    
+    // Adjust for negative days
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      days += lastMonth.getDate();
+    }
+    
+    // Adjust for negative months
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    // Build display string
+    let display = '';
+    if (years > 0) {
+      display += `${years} year${years !== 1 ? 's' : ''}`;
+      if (months > 0) {
+        display += `, ${months} month${months !== 1 ? 's' : ''}`;
+      }
+    } else if (months > 0) {
+      display += `${months} month${months !== 1 ? 's' : ''}`;
+      if (days > 0) {
+        display += `, ${days} day${days !== 1 ? 's' : ''}`;
+      }
+    } else {
+      display = `${days} day${days !== 1 ? 's' : ''}`;
+    }
+    
+    return { years, months, days, display };
+  };
+
   const handleCompleteProbation = async (employeeId: string) => {
     try {
       await adminAPI.completeProbation(employeeId);
@@ -563,6 +699,43 @@ const EmployeesPage: React.FC = () => {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to terminate probation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditProbation = (employee: User) => {
+    setEditingProbation(employee);
+    setProbationFormData({
+      probationStartDate: employee.probationStartDate 
+        ? new Date(employee.probationStartDate).toISOString().split('T')[0]
+        : '',
+      probationEndDate: employee.probationEndDate 
+        ? new Date(employee.probationEndDate).toISOString().split('T')[0]
+        : '',
+      probationDuration: employee.probationDuration || 90
+    });
+  };
+
+  const handleUpdateProbation = async () => {
+    if (!editingProbation) return;
+
+    try {
+      await adminAPI.updateProbation(editingProbation.id, {
+        probationStartDate: probationFormData.probationStartDate || undefined,
+        probationEndDate: probationFormData.probationEndDate || undefined,
+        probationDuration: probationFormData.probationDuration
+      });
+      toast({
+        title: 'Success',
+        description: 'Probation updated successfully.',
+      });
+      setEditingProbation(null);
+      fetchEmployees();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update probation',
         variant: 'destructive',
       });
     }
@@ -695,6 +868,7 @@ const EmployeesPage: React.FC = () => {
                   </div>
                 </TableHead>
                 <TableHead className="font-semibold" role="columnheader">Status</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Tenure</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Probation</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Leave Balance</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Contact</TableHead>
@@ -747,24 +921,44 @@ const EmployeesPage: React.FC = () => {
                     </Badge>
                   </TableCell>
                   <TableCell role="cell">
-                    {employee.role === 'employee' ? (
-                      <div className="space-y-1">
-                        <Badge className={getProbationStatusColor(employee.probationStatus)}>
-                          {getProbationStatusLabel(employee.probationStatus)}
-                        </Badge>
-                        {employee.probationStatus === 'active' || employee.probationStatus === 'extended' ? (
-                          employee.probationEndDate && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-slate-900">
+                        {calculateTenure(employee).display}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {employee.joinDate 
+                          ? new Date(employee.joinDate).toLocaleDateString()
+                          : new Date(employee.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell role="cell">
+                    {employee.role === 'employee' ? (() => {
+                      const probationInfo = calculateProbationStatus(employee);
+                      const displayStatus = probationInfo.status || employee.probationStatus;
+                      const displayEndDate = probationInfo.endDate || (employee.probationEndDate ? new Date(employee.probationEndDate) : null);
+                      
+                      return (
+                        <div className="space-y-1">
+                          <Badge className={getProbationStatusColor(displayStatus)}>
+                            {getProbationStatusLabel(displayStatus)}
+                          </Badge>
+                          {(displayStatus === 'active' || displayStatus === 'extended') && displayEndDate ? (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Ends: {new Date(employee.probationEndDate).toLocaleDateString()}
+                              Ends: {displayEndDate.toLocaleDateString()}
                             </p>
-                          )
-                        ) : employee.probationCompletedAt ? (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Completed: {new Date(employee.probationCompletedAt).toLocaleDateString()}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : (
+                          ) : displayStatus === 'completed' && employee.probationCompletedAt ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Completed: {new Date(employee.probationCompletedAt).toLocaleDateString()}
+                            </p>
+                          ) : displayStatus === 'completed' && displayEndDate ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Ended: {displayEndDate.toLocaleDateString()}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })() : (
                       <span className="text-muted-foreground text-sm">N/A</span>
                     )}
                   </TableCell>
@@ -864,6 +1058,12 @@ const EmployeesPage: React.FC = () => {
                               Complete Probation
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={() => handleEditProbation(employee)}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit Probation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => {
                                 const days = prompt('Enter additional days to extend probation:');
                                 if (days && !isNaN(Number(days)) && Number(days) > 0) {
@@ -883,6 +1083,14 @@ const EmployeesPage: React.FC = () => {
                             </DropdownMenuItem>
                           </>
                         )}
+                        <DropdownMenuItem
+                          onClick={() => setResettingPasswordFor(employee)}
+                          className="hover:bg-blue-50 hover:text-blue-700"
+                          aria-label={`Reset password for ${employee.name}`}
+                        >
+                          <Lock className="mr-2 h-4 w-4" />
+                          Reset Password
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleToggleStatus(employee)}
                           className="hover:bg-green-50 hover:text-green-700"
@@ -1081,6 +1289,15 @@ const EmployeesPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <Button
+                    onClick={() => navigate('/admin/settings', { state: { tab: 'probation' } })}
+                    variant="outline"
+                    className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                    aria-label="Manage probation settings"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Probation Settings
+                  </Button>
                   <Button
                     onClick={fetchEmployees}
                     variant="outline"
@@ -1295,6 +1512,201 @@ const EmployeesPage: React.FC = () => {
       </Card>
         </div>
       </div>
+
+      {/* Employee Form Dialog */}
+      {showForm && (
+        <EmployeeForm
+          employee={editingEmployee}
+          onClose={() => {
+            setShowForm(false);
+            setEditingEmployee(null);
+          }}
+          onSuccess={() => {
+            setShowForm(false);
+            setEditingEmployee(null);
+            fetchEmployees();
+          }}
+        />
+      )}
+
+      {/* Adjust Leave Balance Dialog */}
+      <AdjustLeaveBalanceDialog
+        open={!!adjustingLeaveFor}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAdjustingLeaveFor(null);
+          }
+        }}
+        employeeId={adjustingLeaveFor?.id || ''}
+        employeeName={adjustingLeaveFor?.name || ''}
+        onSuccess={() => {
+          setAdjustingLeaveFor(null);
+          fetchEmployees();
+        }}
+      />
+
+      {/* Leave Balance Modal */}
+      <LeaveBalanceModal
+        isOpen={showLeaveBalanceModal}
+        onClose={() => {
+          setShowLeaveBalanceModal(false);
+          setSelectedEmployee(null);
+        }}
+        userId={selectedEmployee?.id}
+        userName={selectedEmployee?.name}
+        fetchLeaveBalanceFn={adminAPI.getUserLeaveBalance}
+        onAdjustLeave={() => {
+          // Refresh employee list after leave adjustment
+          fetchEmployees();
+        }}
+      />
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resettingPasswordFor} onOpenChange={(open) => {
+        if (!open) {
+          setResettingPasswordFor(null);
+          setNewPassword('');
+          setShowPassword(false);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5 text-blue-600" />
+              Reset Password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new password for {resettingPasswordFor?.name} ({resettingPasswordFor?.email})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter new password (min 6 characters)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-slate-400" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Password must be at least 6 characters long. The employee will need to use this password to log in.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setResettingPasswordFor(null);
+                setNewPassword('');
+                setShowPassword(false);
+              }}
+              disabled={resettingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={resettingPassword || !newPassword || newPassword.length < 6}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              {resettingPassword ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Reset Password
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Probation Dialog */}
+      <Dialog open={!!editingProbation} onOpenChange={(open) => !open && setEditingProbation(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Probation</DialogTitle>
+            <DialogDescription>
+              Update probation dates and duration for {editingProbation?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="probationStartDate">Start Date</Label>
+              <Input
+                id="probationStartDate"
+                type="date"
+                value={probationFormData.probationStartDate}
+                onChange={(e) => setProbationFormData({ ...probationFormData, probationStartDate: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="probationDuration">Duration (days)</Label>
+              <Input
+                id="probationDuration"
+                type="number"
+                min="1"
+                value={probationFormData.probationDuration}
+                onChange={(e) => {
+                  const duration = parseInt(e.target.value, 10);
+                  setProbationFormData({ 
+                    ...probationFormData, 
+                    probationDuration: duration || 90
+                  });
+                  // Auto-calculate end date if start date is set
+                  if (probationFormData.probationStartDate && duration) {
+                    const startDate = new Date(probationFormData.probationStartDate);
+                    const endDate = new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000);
+                    setProbationFormData(prev => ({
+                      ...prev,
+                      probationEndDate: endDate.toISOString().split('T')[0]
+                    }));
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="probationEndDate">End Date</Label>
+              <Input
+                id="probationEndDate"
+                type="date"
+                value={probationFormData.probationEndDate}
+                onChange={(e) => setProbationFormData({ ...probationFormData, probationEndDate: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingProbation(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateProbation}>
+              Update Probation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

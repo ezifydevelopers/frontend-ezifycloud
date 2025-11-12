@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Building2, ArrowLeft, CheckCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { handleFormValidationErrors } from '@/lib/formUtils';
+import { authAPI } from '@/lib/api/authAPI';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -20,9 +20,9 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 
 const ForgotPasswordForm: React.FC = () => {
-  const { resetPassword, isLoading } = useAuth();
   const [emailSent, setEmailSent] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -41,6 +41,7 @@ const ForgotPasswordForm: React.FC = () => {
     
     try {
       setError('');
+      setIsLoading(true);
       
       // Show loading toast
       toast({
@@ -48,13 +49,17 @@ const ForgotPasswordForm: React.FC = () => {
         description: 'Please wait while we process your request.',
       });
       
-      await resetPassword(data.email);
-      setEmailSent(true);
+      const response = await authAPI.forgotPassword(data.email);
       
-      toast({
-        title: 'Reset email sent!',
-        description: 'Check your inbox for password reset instructions.',
-      });
+      if (response.success) {
+        setEmailSent(true);
+        toast({
+          title: 'Reset email sent!',
+          description: 'Check your inbox for password reset instructions.',
+        });
+      } else {
+        throw new Error(response.message || 'Failed to send reset email');
+      }
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to send reset email. Please try again.';
       setError(errorMessage);
@@ -65,6 +70,8 @@ const ForgotPasswordForm: React.FC = () => {
         description: errorMessage,
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 

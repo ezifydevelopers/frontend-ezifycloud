@@ -4,6 +4,8 @@ import { managerAPI } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import LeaveRequestDetails from '@/components/leave/LeaveRequestDetails';
+import { LeaveRequest as LeaveRequestType } from '@/types/leave';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
@@ -78,6 +80,7 @@ interface LeaveHistorySummary {
 const LeaveHistoryPage: React.FC = () => {
   const { user } = useAuth();
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<LeaveRequestType | null>(null);
   const [summary, setSummary] = useState<LeaveHistorySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [leaveBalance, setLeaveBalance] = useState<{ [key: string]: { remaining: number; total: number; used: number } }>({});
@@ -490,7 +493,35 @@ const LeaveHistoryPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                // Convert local LeaveRequest to LeaveRequestType format
+                                const detailRequest: LeaveRequestType = {
+                                  id: request.id,
+                                  leaveType: request.leaveType as any,
+                                  startDate: request.startDate,
+                                  endDate: request.endDate,
+                                  totalDays: request.days,
+                                  reason: request.reason,
+                                  status: request.status,
+                                  priority: request.priority || 'medium',
+                                  isPaid: true, // Default, can be updated if available
+                                  isHalfDay: request.isHalfDay || false,
+                                  halfDayPeriod: request.halfDayPeriod as any,
+                                  submittedAt: request.submittedAt,
+                                  employee: {
+                                    id: user?.id || '',
+                                    name: user?.name || 'Unknown',
+                                    email: user?.email || '',
+                                    department: user?.department || 'Unassigned',
+                                    avatar: user?.profilePicture || undefined
+                                  }
+                                };
+                                setSelectedRequest(detailRequest);
+                              }}
+                            >
                               <Eye className="h-4 w-4" />
                             </Button>
                             {request.status === 'pending' && (
@@ -570,6 +601,15 @@ const LeaveHistoryPage: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* Leave Request Details Modal */}
+      {selectedRequest && (
+        <LeaveRequestDetails
+          request={selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          canApprove={false}
+        />
+      )}
     </div>
   );
 };

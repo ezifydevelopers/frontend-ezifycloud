@@ -6,8 +6,10 @@ import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { adminAPI } from '@/lib/api';
-import { User, Calendar, TrendingUp, RefreshCw, Download } from 'lucide-react';
+import { User, Calendar, TrendingUp, RefreshCw, Download, Plus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import AdjustLeaveBalanceDialog from '@/components/dialogs/AdjustLeaveBalanceDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LeaveBalanceModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ interface LeaveBalanceModalProps {
   userId?: string;
   userName?: string;
   fetchLeaveBalanceFn?: (userId: string, year?: string) => Promise<any>;
+  onAdjustLeave?: () => void;
 }
 
 interface LeaveBalanceData {
@@ -47,12 +50,15 @@ const LeaveBalanceModal: React.FC<LeaveBalanceModalProps> = ({
   onClose,
   userId,
   userName,
-  fetchLeaveBalanceFn
+  fetchLeaveBalanceFn,
+  onAdjustLeave
 }) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [leaveBalanceData, setLeaveBalanceData] = useState<UserLeaveBalance | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedUser, setSelectedUser] = useState(userId || '');
+  const [showAdjustDialog, setShowAdjustDialog] = useState(false);
   
   // Update selectedUser when userId prop changes
   useEffect(() => {
@@ -194,6 +200,17 @@ const LeaveBalanceModal: React.FC<LeaveBalanceModalProps> = ({
             </div>
             
             <div className="flex gap-2">
+              {(user?.role === 'admin' || user?.role === 'manager') && selectedUser && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setShowAdjustDialog(true)}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adjust Leave
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -343,6 +360,27 @@ const LeaveBalanceModal: React.FC<LeaveBalanceModalProps> = ({
           )}
         </div>
       </DialogContent>
+      
+      {/* Adjust Leave Balance Dialog */}
+      {selectedUser && leaveBalanceData && (
+        <AdjustLeaveBalanceDialog
+          open={showAdjustDialog}
+          onOpenChange={(open) => {
+            setShowAdjustDialog(open);
+            if (!open && onAdjustLeave) {
+              onAdjustLeave();
+            }
+          }}
+          employeeId={selectedUser}
+          employeeName={leaveBalanceData.userName}
+          onSuccess={() => {
+            fetchLeaveBalance();
+            if (onAdjustLeave) {
+              onAdjustLeave();
+            }
+          }}
+        />
+      )}
     </Dialog>
   );
 };

@@ -52,21 +52,23 @@ export interface LeaveBalance {
 
 export interface LeavePolicy {
   id: string;
-  name: string;
+  name?: string;
   description?: string;
   leaveType: LeaveType;
-  maxDaysPerYear: number;
-  maxDaysPerRequest: number;
-  carryForwardDays: number;
-  carryForwardExpiry: number; // months
-  isPaid?: boolean;
-  requiresApproval: boolean;
-  requiresDocumentation: boolean;
-  isActive: boolean;
-  applicableRoles: string[];
-  applicableDepartments: string[];
-  createdAt: string;
-  updatedAt: string;
+  maxDaysPerYear?: number;
+  totalDaysPerYear?: number; // Alternative field name
+  maxDaysPerRequest?: number;
+  carryForwardDays?: number;
+  carryForwardExpiry?: number; // months
+  isPaid?: boolean; // camelCase from Prisma
+  is_paid?: boolean; // snake_case from API (if not transformed)
+  requiresApproval?: boolean;
+  requiresDocumentation?: boolean;
+  isActive?: boolean;
+  applicableRoles?: string[];
+  applicableDepartments?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AuditLog {

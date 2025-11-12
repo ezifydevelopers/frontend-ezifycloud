@@ -26,6 +26,7 @@ export interface User {
   employeeType?: 'onshore' | 'offshore' | null;
   region?: string | null;
   timezone?: string | null;
+  joinDate?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

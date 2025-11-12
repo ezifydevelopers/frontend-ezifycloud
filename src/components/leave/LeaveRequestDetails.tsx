@@ -3,6 +3,7 @@ import { LeaveRequest } from '@/types/leave';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -28,8 +29,9 @@ import {
 interface LeaveRequestDetailsProps {
   request: LeaveRequest;
   onClose: () => void;
-  onApprove: () => void;
-  onReject: () => void;
+  onApprove?: () => void;
+  onReject?: () => void;
+  canApprove?: boolean; // Optional prop to explicitly control visibility
 }
 
 const LeaveRequestDetails: React.FC<LeaveRequestDetailsProps> = ({
@@ -37,7 +39,14 @@ const LeaveRequestDetails: React.FC<LeaveRequestDetailsProps> = ({
   onClose,
   onApprove,
   onReject,
+  canApprove,
 }) => {
+  const { user } = useAuth();
+  
+  // Determine if user can approve/reject based on role or explicit prop
+  const canApproveReject = canApprove !== undefined 
+    ? canApprove 
+    : user?.role === 'manager' || user?.role === 'admin';
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
@@ -176,6 +185,14 @@ const LeaveRequestDetails: React.FC<LeaveRequestDetailsProps> = ({
                 {request.status ? request.status.charAt(0).toUpperCase() + request.status.slice(1) : 'Pending'}
               </Badge>
             </div>
+            {request.isPaid === false && (
+              <div>
+                <p className="text-sm text-slate-600 mb-1">Payment Status</p>
+                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                  Unpaid Leave
+                </Badge>
+              </div>
+            )}
             <div>
               <p className="text-sm text-slate-600 mb-1">Priority</p>
               <Badge className={getPriorityColor(request.priority || 'low')}>
@@ -239,7 +256,7 @@ const LeaveRequestDetails: React.FC<LeaveRequestDetailsProps> = ({
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          {request?.status === 'pending' && (
+          {canApproveReject && request?.status === 'pending' && onApprove && onReject && (
             <>
               <Button
                 variant="destructive"
