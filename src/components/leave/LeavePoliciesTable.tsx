@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { adminAPI } from '@/lib/api';
 import ConfirmationDialog from '@/components/ui/confirmation-dialog';
 import { useConfirmation } from '@/hooks/useConfirmation';
@@ -85,6 +86,8 @@ interface LeavePolicy {
   applicableDepartments?: string[]; // For backward compatibility
   createdAt?: string; // For backward compatibility
   updatedAt?: string; // For backward compatibility
+  employeeType?: 'onshore' | 'offshore' | null; // Employee type for the policy
+  employee_type?: 'onshore' | 'offshore' | null; // Actual API response field
 }
 
 interface LeavePoliciesTableProps {
@@ -93,6 +96,7 @@ interface LeavePoliciesTableProps {
   showCreateButton?: boolean;
   onRefresh?: () => void;
   className?: string;
+  employeeType?: 'onshore' | 'offshore' | null; // Filter by employee type
 }
 
 // Form data interface
@@ -106,6 +110,7 @@ interface PolicyFormData {
   advanceNotice: number;
   description: string;
   isActive: boolean;
+  employeeType?: 'onshore' | 'offshore' | null;
 }
 
 // Policy Form Component
@@ -114,7 +119,11 @@ const PolicyForm: React.FC<{
   onSave: (data: Partial<LeavePolicy>) => void;
   onCancel: () => void;
   existingPolicies?: LeavePolicy[];
-}> = ({ policy, onSave, onCancel, existingPolicies = [] }) => {
+  availableLeaveTypes?: string[];
+  loadingTypes?: boolean;
+  onRefreshLeaveTypes?: () => void;
+  employeeType?: 'onshore' | 'offshore' | null; // Employee type for this policy
+}> = ({ policy, onSave, onCancel, existingPolicies = [], availableLeaveTypes: propAvailableLeaveTypes = [], loadingTypes: propLoadingTypes = false, onRefreshLeaveTypes, employeeType = null }) => {
   const [formData, setFormData] = useState<PolicyFormData>({
     name: policy?.name || policy?.leaveType || '',
     type: policy?.leaveType || policy?.type || 'annual',
@@ -125,13 +134,75 @@ const PolicyForm: React.FC<{
     advanceNotice: 0, // This field doesn't exist in the schema
     description: policy?.description || '',
     isActive: policy?.isActive !== undefined ? policy.isActive : true,
+    employeeType: employeeType || null, // Set from prop or use policy's employeeType
   });
 
+  const [isCustomType, setIsCustomType] = useState(false);
+  const [customTypeName, setCustomTypeName] = useState('');
+
   // Get existing leave types (excluding current policy if editing)
+  // Filter by employeeType to only show conflicts for the current tab
   const existingTypes = existingPolicies
-    .filter(p => p.id !== policy?.id)
+    .filter(p => {
+      // Exclude current policy if editing
+      if (p.id === policy?.id) return false;
+      
+      // Filter by employeeType - only show policies matching the current tab
+      const policyEmployeeType = p.employeeType || p.employee_type;
+      if (employeeType) {
+        // If we're in a specific tab, only show policies for that tab
+        return policyEmployeeType === employeeType;
+      } else {
+        // If no employeeType specified, only show generic policies (null)
+        return !policyEmployeeType;
+      }
+    })
     .map(p => p.leaveType || p.leave_type || p.type)
     .filter(Boolean);
+
+  // Use leave types from props (passed from parent)
+  const availableLeaveTypes = propAvailableLeaveTypes.length > 0 
+    ? propAvailableLeaveTypes 
+    : ['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency'];
+  const loadingTypes = propLoadingTypes;
+
+  // Format leave type for display
+  const formatLeaveType = (type: string): string => {
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  // Convert display name to type format (lowercase, underscores)
+  const toTypeFormat = (name: string): string => {
+    return name.toLowerCase().replace(/\s+/g, '_');
+  };
+
+  // Handle leave type selection
+  const handleLeaveTypeChange = (value: string) => {
+    if (value === '__add_new__') {
+      setIsCustomType(true);
+      setCustomTypeName('');
+      setFormData(prev => ({ ...prev, type: '' }));
+    } else {
+      setIsCustomType(false);
+      setCustomTypeName('');
+      setFormData(prev => ({ ...prev, type: value }));
+    }
+  };
+
+  // Handle custom type name input
+  const handleCustomTypeNameChange = (value: string) => {
+    setCustomTypeName(value);
+    const typeValue = toTypeFormat(value);
+    setFormData(prev => ({
+      ...prev,
+      type: typeValue,
+      // Auto-update policy name if it's empty or matches the old type
+      name: prev.name === '' || prev.name === formatLeaveType(prev.type) ? value : prev.name
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,10 +219,12 @@ const PolicyForm: React.FC<{
             <div>
               <h4 className="font-medium text-blue-900">Existing Leave Types</h4>
               <p className="text-sm text-blue-700 mt-1">
-                The following leave types already have policies: <span className="font-medium">{existingTypes.join(', ')}</span>
+                The following leave types already have policies{employeeType ? ` for ${employeeType === 'onshore' ? 'Onshore' : 'Offshore'}` : ''}: <span className="font-medium">{existingTypes.join(', ')}</span>
               </p>
               <p className="text-xs text-blue-600 mt-1">
-                You can only have one policy per leave type. Choose a different type or edit the existing policy.
+                {employeeType 
+                  ? `You can only have one policy per leave type for ${employeeType === 'onshore' ? 'onshore' : 'offshore'} employees. Choose a different type or edit the existing policy.`
+                  : 'You can only have one policy per leave type. Choose a different type or edit the existing policy.'}
               </p>
             </div>
           </div>
@@ -169,26 +242,83 @@ const PolicyForm: React.FC<{
             required
           />
         </div>
+        {employeeType && (
+          <div>
+            <Label htmlFor="employeeType">Employee Type</Label>
+            <Input
+              id="employeeType"
+              value={employeeType === 'onshore' ? 'Onshore' : 'Offshore'}
+              disabled
+              className="bg-slate-100 cursor-not-allowed"
+            />
+          </div>
+        )}
         <div>
           <Label htmlFor="type">Leave Type</Label>
-          <select
-            id="type"
-            value={formData.type}
-            onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
-            className={`w-full px-3 py-2 border rounded-md focus:ring-blue-200 ${
-              existingTypes.includes(formData.type) 
-                ? 'border-red-300 focus:border-red-300' 
-                : 'border-slate-200 focus:border-blue-300'
-            }`}
-            required
-          >
-            <option value="annual">Annual Leave</option>
-            <option value="sick">Sick Leave</option>
-            <option value="casual">Casual Leave</option>
-            <option value="maternity">Maternity Leave</option>
-            <option value="paternity">Paternity Leave</option>
-            <option value="emergency">Emergency Leave</option>
-          </select>
+          {isCustomType ? (
+            <div className="space-y-2">
+              <Input
+                id="customType"
+                value={customTypeName}
+                onChange={(e) => handleCustomTypeNameChange(e.target.value)}
+                placeholder="Enter new leave type (e.g., Personal Leave, Study Leave)"
+                className={existingTypes.includes(toTypeFormat(customTypeName)) 
+                  ? 'border-red-300 focus:border-red-300' 
+                  : 'border-slate-200 focus:border-blue-300'
+                }
+                required
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsCustomType(false);
+                  setCustomTypeName('');
+                  setFormData(prev => ({ ...prev, type: 'annual' }));
+                }}
+                className="text-xs text-muted-foreground"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Cancel custom type
+              </Button>
+            </div>
+          ) : (
+            <Select
+              value={formData.type || 'annual'}
+              onValueChange={handleLeaveTypeChange}
+            >
+              <SelectTrigger 
+                id="type"
+                className={existingTypes.includes(formData.type) 
+                  ? 'border-red-300 focus:border-red-300' 
+                  : 'border-slate-200 focus:border-blue-300'
+                }
+              >
+                <SelectValue placeholder="Select leave type" />
+              </SelectTrigger>
+              <SelectContent>
+                {loadingTypes ? (
+                  <div className="p-2 text-sm text-muted-foreground">Loading...</div>
+                ) : (
+                  <>
+                    {availableLeaveTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {formatLeaveType(type)}
+                      </SelectItem>
+                    ))}
+                    <div className="border-t my-1" />
+                    <SelectItem value="__add_new__" className="text-blue-600 font-medium">
+                      <div className="flex items-center">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add New Leave Type
+                      </div>
+                    </SelectItem>
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          )}
           {existingTypes.includes(formData.type) && !policy && (
             <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
               <AlertCircle className="h-4 w-4" />
@@ -299,7 +429,8 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
   showFilters = true,
   showCreateButton = true,
   onRefresh,
-  className = ''
+  className = '',
+  employeeType = null
 }) => {
   const [policies, setPolicies] = useState<LeavePolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -318,29 +449,83 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
       // Build query parameters, filtering out undefined values
       const queryParams: Record<string, string> = {};
       if (searchTerm) queryParams.search = searchTerm;
+      if (employeeType) queryParams.employeeType = employeeType;
       
       console.log('🔍 LeavePoliciesTable: Query params:', queryParams);
       
       const response = await adminAPI.getLeavePolicies(queryParams);
       
       console.log('🔍 LeavePoliciesTable: API response:', response);
+      console.log('🔍 LeavePoliciesTable: Response structure:', {
+        success: response.success,
+        hasData: !!response.data,
+        dataType: Array.isArray(response.data) ? 'array' : typeof response.data,
+        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A',
+        employeeType: employeeType,
+        queryParams: queryParams
+      });
       
       if (response.success && response.data) {
-        // Handle both direct array and paginated response formats
+        // Handle PaginatedResponse structure: response.data is PaginatedResponse<T>, response.data.data is T[]
         let policies: LeavePolicy[] = [];
+        
         if (Array.isArray(response.data)) {
+          // Direct array format (fallback)
           policies = response.data;
-        } else if ('policies' in response.data) {
-          policies = (response.data as { policies: LeavePolicy[] }).policies;
-        } else if ('data' in response.data) {
-          policies = (response.data as { data: unknown[] }).data as LeavePolicy[];
+          console.log('🔍 LeavePoliciesTable: Using direct array format, count:', policies.length);
+        } else if (response.data && typeof response.data === 'object') {
+          // PaginatedResponse format: { data: T[], pagination: {...} }
+          if ('data' in response.data && Array.isArray((response.data as any).data)) {
+            policies = (response.data as { data: LeavePolicy[] }).data;
+            console.log('🔍 LeavePoliciesTable: Using PaginatedResponse format, count:', policies.length);
+          } else if ('policies' in response.data && Array.isArray((response.data as any).policies)) {
+            // Alternative nested structure
+            policies = (response.data as { policies: LeavePolicy[] }).policies;
+            console.log('🔍 LeavePoliciesTable: Using nested policies format, count:', policies.length);
+          } else {
+            console.warn('🔍 LeavePoliciesTable: Unknown response.data structure:', response.data);
+            policies = [];
+          }
+        } else {
+          console.warn('🔍 LeavePoliciesTable: response.data is not an array or object:', response.data);
+          policies = [];
+        }
+        
+        // Additional client-side filtering by employeeType to ensure complete separation
+        // IMPORTANT: Onshore and Offshore policies are completely separate
+        // Show policies with exact employeeType match, OR null policies if no exact match exists (for migration)
+        if (employeeType && (employeeType === 'onshore' || employeeType === 'offshore')) {
+          const beforeFilter = policies.length;
+          
+          // Check if any policies have the exact employeeType match
+          const hasExactMatch = policies.some(policy => {
+            const policyEmployeeType = policy.employeeType || policy.employee_type;
+            return policyEmployeeType === employeeType;
+          });
+          
+          policies = policies.filter(policy => {
+            // Handle both camelCase (employeeType) and snake_case (employee_type) field names
+            const policyEmployeeType = policy.employeeType || policy.employee_type;
+            
+            if (hasExactMatch) {
+              // If we have exact matches, only show those
+              return policyEmployeeType === employeeType;
+            } else {
+              // No exact matches - show null policies for migration (they can be edited to assign employeeType)
+              return policyEmployeeType === null || policyEmployeeType === undefined;
+            }
+          });
+          
+          console.log(`🔍 LeavePoliciesTable: Filtered from ${beforeFilter} to ${policies.length} ${employeeType} policies (${hasExactMatch ? 'exact match' : 'migration mode - showing null policies'})`);
         }
         
         setPolicies(policies);
-        console.log('✅ LeavePoliciesTable: Loaded policies:', policies.length);
-        console.log('🔍 LeavePoliciesTable: Policies data:', policies);
+        console.log('✅ LeavePoliciesTable: Final policies count:', policies.length);
+        if (policies.length > 0) {
+          console.log('🔍 LeavePoliciesTable: Sample policy:', policies[0]);
+        }
       } else {
-        console.warn('❌ LeavePoliciesTable: No data received');
+        console.warn('❌ LeavePoliciesTable: Response not successful:', response);
         setPolicies([]);
       }
     } catch (error) {
@@ -354,11 +539,32 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, employeeType]);
+
+  // Fetch available leave types from API
+  const [availableLeaveTypes, setAvailableLeaveTypes] = useState<string[]>([]);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+
+  const fetchLeaveTypes = useCallback(async () => {
+    try {
+      setLoadingTypes(true);
+      const response = await adminAPI.getLeavePolicyTypes();
+      if (response.success && response.data) {
+        setAvailableLeaveTypes(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching leave types:', error);
+      // Fallback to default types if API fails
+      setAvailableLeaveTypes(['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency']);
+    } finally {
+      setLoadingTypes(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchPolicies();
-  }, [fetchPolicies]);
+    fetchLeaveTypes();
+  }, [fetchPolicies, fetchLeaveTypes]);
 
   const handleSavePolicy = async (policyData: Partial<LeavePolicy>) => {
     try {
@@ -377,6 +583,7 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
         maxCarryForwardDays: policyData.carryForward ? (Number(policyData.maxCarryForward) || 0) : null,
         requiresApproval: Boolean(policyData.requiresApproval),
         allowHalfDay: true, // Default to true since this field doesn't exist in the form
+        employeeType: employeeType || policyData.employeeType || null, // Include employeeType
       };
       
       console.log('🔍 LeavePoliciesTable: Mapped data:', mappedData);
@@ -385,16 +592,21 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
       if (editingPolicy) {
         // Update existing policy
         console.log('🔍 LeavePoliciesTable: Updating policy:', editingPolicy.id);
-        response = await adminAPI.updateLeavePolicy(editingPolicy.id, mappedData);
+        // Pass employeeType to ensure we only update policies matching the current tab
+        response = await adminAPI.updateLeavePolicy(editingPolicy.id, mappedData, employeeType || undefined);
         console.log('🔍 LeavePoliciesTable: Update response:', response);
       } else {
         // Create new policy
         console.log('🔍 LeavePoliciesTable: Creating new policy');
-        response = await adminAPI.createLeavePolicy(mappedData);
+        // Pass employeeType to ensure policy is created for the correct tab
+        response = await adminAPI.createLeavePolicy(mappedData, employeeType || undefined);
         console.log('🔍 LeavePoliciesTable: Create response:', response);
       }
       
-      if (response.success) {
+      // Check if response has success field (normal response) or is an error response (409 conflict)
+      const isErrorResponse = !response.success || response.status === 409 || response.error;
+      
+      if (!isErrorResponse && response.success) {
         toast({
           title: editingPolicy ? 'Policy updated' : 'Policy created',
           description: `Leave policy has been ${editingPolicy ? 'updated' : 'created'} successfully`,
@@ -403,22 +615,53 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
         setEditingPolicy(null);
         // Refresh the policies list
         fetchPolicies();
+        // Refresh the leave types list to include newly created types
+        fetchLeaveTypes();
         // Call parent refresh if provided
         if (onRefresh) {
           onRefresh();
         }
       } else {
-        // Handle specific error cases
-        if (response.message?.includes('already exists')) {
+        // Handle error response (409 conflict or other errors)
+        const errorMessage = response.message || response.error || 'Failed to save policy';
+        const existingPolicyId = (response.data as any)?.existingPolicyId;
+        
+        // Check if it's a duplicate policy error
+        if (errorMessage.includes('already exists') || response.status === 409 || response.error?.includes('already exists')) {
           toast({
             title: 'Policy Already Exists',
-            description: response.message,
+            description: errorMessage,
             variant: 'destructive',
+            action: existingPolicyId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // Find and edit the existing policy
+                  const existingPolicy = policies.find(p => p.id === existingPolicyId);
+                  if (existingPolicy) {
+                    setEditingPolicy(existingPolicy);
+                    setShowForm(true);
+                  } else {
+                    // Refresh policies and try again
+                    fetchPolicies().then(() => {
+                      const refreshedPolicy = policies.find(p => p.id === existingPolicyId);
+                      if (refreshedPolicy) {
+                        setEditingPolicy(refreshedPolicy);
+                        setShowForm(true);
+                      }
+                    });
+                  }
+                }}
+              >
+                Edit Existing Policy
+              </Button>
+            ) : undefined,
           });
           // Don't close the form, let user try again
           return;
         } else {
-          throw new Error(response.message || 'Failed to save policy');
+          throw new Error(errorMessage);
         }
       }
     } catch (error) {
@@ -457,7 +700,8 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
       }
       
       // Instead of deleting, deactivate the policy using the dedicated toggle endpoint
-      const response = await adminAPI.toggleLeavePolicyStatus(policyId, false);
+      // Pass employeeType to ensure we only deactivate policies matching the current tab
+      const response = await adminAPI.toggleLeavePolicyStatus(policyId, false, employeeType || undefined);
       console.log('🔍 LeavePoliciesTable: Deactivate response:', response);
       
       if (response.success) {
@@ -502,7 +746,8 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
       setLoading(true);
       console.log('🔍 LeavePoliciesTable: Deleting policy:', policyId);
       
-      const response = await adminAPI.deleteLeavePolicy(policyId);
+      // Pass employeeType to ensure we only delete policies matching the current tab
+      const response = await adminAPI.deleteLeavePolicy(policyId, employeeType || undefined);
       console.log('🔍 LeavePoliciesTable: Delete response:', response);
       
       if (response.success) {
@@ -542,7 +787,8 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
       }
       
       // Use the dedicated toggle endpoint
-      const response = await adminAPI.toggleLeavePolicyStatus(policyId, !currentPolicy.isActive);
+      // Pass employeeType to ensure we only toggle policies matching the current tab
+      const response = await adminAPI.toggleLeavePolicyStatus(policyId, !currentPolicy.isActive, employeeType || undefined);
       console.log('🔍 LeavePoliciesTable: Toggle status response:', response);
       
       if (response.success) {
@@ -862,6 +1108,10 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
               setEditingPolicy(null);
             }}
             existingPolicies={policies}
+            availableLeaveTypes={availableLeaveTypes}
+            loadingTypes={loadingTypes}
+            onRefreshLeaveTypes={fetchLeaveTypes}
+            employeeType={employeeType}
           />
         </DialogContent>
       </Dialog>

@@ -63,7 +63,10 @@ const LeaveBalanceOverviewCard: React.FC<LeaveBalanceOverviewCardProps> = ({
 
   // Format leave type name for display
   const formatLeaveTypeName = (type: string) => {
-    return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   };
 
   return (

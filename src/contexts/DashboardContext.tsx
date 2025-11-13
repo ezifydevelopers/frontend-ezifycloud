@@ -151,7 +151,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('❌ DashboardContext: Error fetching dashboard data:', err);
       const errorMessage = err instanceof Error 
         ? (err as any).isConnectionError 
-          ? 'Backend server is not running. Please start it with: cd backend-ezifycloud && npm run dev'
+          ? 'Unable to connect to the server. Please check your connection.'
           : err.message
         : 'Failed to fetch dashboard data';
       setError(errorMessage);

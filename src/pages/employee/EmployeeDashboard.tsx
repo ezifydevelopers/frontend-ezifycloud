@@ -372,6 +372,15 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
   // Use the separate holidays state instead of dashboard data
 
   const getLeaveTypeDisplayName = (dbValue: string): string => {
+    if (!dbValue) return 'Leave';
+    
+    // Replace underscores with spaces and capitalize each word
+    const formatted = dbValue
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+    
+    // Check if it's a known type and add "Leave" suffix if not already present
     const typeMap: { [key: string]: string } = {
       'annual': 'Annual Leave',
       'sick': 'Sick Leave',
@@ -380,7 +389,14 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
       'paternity': 'Paternity Leave',
       'emergency': 'Emergency Leave'
     };
-    return typeMap[dbValue?.toLowerCase()] || dbValue || 'Leave';
+    
+    const lowerValue = dbValue.toLowerCase();
+    if (typeMap[lowerValue]) {
+      return typeMap[lowerValue];
+    }
+    
+    // If formatted name doesn't end with "Leave", add it
+    return formatted.toLowerCase().includes('leave') ? formatted : `${formatted} Leave`;
   };
 
   const getStatusVariant = (status: string) => {

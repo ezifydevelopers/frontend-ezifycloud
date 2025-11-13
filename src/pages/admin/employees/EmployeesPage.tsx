@@ -18,6 +18,7 @@ import {
   UserCheck,
   UserX,
   Building2,
+  Globe,
   Mail,
   Phone,
   Calendar,
@@ -572,6 +573,20 @@ const EmployeesPage: React.FC = () => {
     return colors[department as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
+  const getEmployeeTypeColor = (employeeType?: string | null) => {
+    if (!employeeType) {
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+    switch (employeeType.toLowerCase()) {
+      case 'onshore':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'offshore':
+        return 'bg-purple-100 text-purple-700 border-purple-200';
+      default:
+        return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+  };
+
   const getProbationStatusColor = (status?: string | null) => {
     switch (status) {
       case 'active':
@@ -780,8 +795,8 @@ const EmployeesPage: React.FC = () => {
 
     return (
       <>
-        <div className="overflow-x-auto" role="region" aria-label="Employee table with horizontal scroll">
-          <Table role="table" aria-label="Employee directory table">
+        <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0" role="region" aria-label="Employee table with horizontal scroll">
+          <Table role="table" aria-label="Employee directory table" className="min-w-full">
             <TableHeader role="rowgroup">
               <TableRow className="border-slate-200/50" role="row">
                 <TableHead className="w-12" role="columnheader">
@@ -868,6 +883,7 @@ const EmployeesPage: React.FC = () => {
                   </div>
                 </TableHead>
                 <TableHead className="font-semibold" role="columnheader">Status</TableHead>
+                <TableHead className="font-semibold" role="columnheader">Employee Type</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Tenure</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Probation</TableHead>
                 <TableHead className="font-semibold" role="columnheader">Leave Balance</TableHead>
@@ -918,6 +934,20 @@ const EmployeesPage: React.FC = () => {
                   <TableCell role="cell">
                     <Badge className={getStatusColor(employee.isActive)}>
                       {employee.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell role="cell">
+                    <Badge className={getEmployeeTypeColor(employee.employeeType)}>
+                      <div className="flex items-center gap-1.5">
+                        {employee.employeeType === 'onshore' ? (
+                          <Globe className="h-3 w-3" />
+                        ) : employee.employeeType === 'offshore' ? (
+                          <Building2 className="h-3 w-3" />
+                        ) : null}
+                        <span>
+                          {employee.employeeType ? (employee.employeeType === 'onshore' ? 'Onshore' : 'Offshore') : 'N/A'}
+                        </span>
+                      </div>
                     </Badge>
                   </TableCell>
                   <TableCell role="cell">
@@ -1212,7 +1242,7 @@ const EmployeesPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100" role="main" aria-label="Employee Management">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
       {/* Header */}
       <div className="relative">

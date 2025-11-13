@@ -9,6 +9,7 @@ export interface LeaveRequest {
     email: string;
     department: string;
     avatar?: string;
+    employeeType?: 'onshore' | 'offshore' | null;
   };
   leaveType: LeaveType;
   startDate: string;

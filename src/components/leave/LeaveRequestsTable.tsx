@@ -365,6 +365,7 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                 <TableHeader>
                   <TableRow className="border-slate-200/50">
                     <TableHead className="font-semibold">Employee</TableHead>
+                    <TableHead className="font-semibold">Employee Type</TableHead>
                     <TableHead className="font-semibold">Leave Type</TableHead>
                     <TableHead className="font-semibold">Dates</TableHead>
                     <TableHead className="font-semibold">Days</TableHead>
@@ -393,6 +394,21 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                             <p className="text-sm text-slate-500">{request.employee.department}</p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {request.employee.employeeType ? (
+                          <Badge 
+                            className={
+                              request.employee.employeeType === 'onshore'
+                                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : 'bg-purple-100 text-purple-800 border-purple-200'
+                            }
+                          >
+                            {request.employee.employeeType === 'onshore' ? 'Onshore' : 'Offshore'}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-slate-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

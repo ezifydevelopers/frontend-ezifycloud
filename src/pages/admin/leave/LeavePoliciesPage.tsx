@@ -2,13 +2,16 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { withDashboardData, WithDashboardDataProps } from '@/components/hoc/withDashboardData';
 import LeavePoliciesTable from '@/components/leave/LeavePoliciesTable';
 import {
   BookOpen,
   Calendar,
   RefreshCw,
-  Clock as ClockIcon
+  Clock as ClockIcon,
+  Globe,
+  Building2
 } from 'lucide-react';
 
 const LeavePoliciesPage: React.FC<WithDashboardDataProps> = ({ 
@@ -25,7 +28,7 @@ const LeavePoliciesPage: React.FC<WithDashboardDataProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8" style={{ width: '100%', maxWidth: '1088px', boxSizing: 'border-box' }}>
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-6">
           {/* Header */}
           <div className="relative">
@@ -79,12 +82,44 @@ const LeavePoliciesPage: React.FC<WithDashboardDataProps> = ({
 
           {/* Main Content */}
           <div className="space-y-6">
-            <LeavePoliciesTable 
-              showStats={true}
-              showFilters={true}
-              showCreateButton={true}
-              onRefresh={handleRefresh}
-            />
+            <Tabs defaultValue="onshore" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6 bg-white/50 backdrop-blur-sm border border-white/20 rounded-xl p-1">
+                <TabsTrigger 
+                  value="onshore" 
+                  className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-blue-600 data-[state=active]:text-white"
+                >
+                  <Globe className="h-4 w-4" />
+                  Onshore Policies
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="offshore" 
+                  className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-purple-600 data-[state=active]:text-white"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Offshore Policies
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="onshore" className="mt-0">
+                <LeavePoliciesTable 
+                  showStats={true}
+                  showFilters={true}
+                  showCreateButton={true}
+                  onRefresh={handleRefresh}
+                  employeeType="onshore"
+                />
+              </TabsContent>
+              
+              <TabsContent value="offshore" className="mt-0">
+                <LeavePoliciesTable 
+                  showStats={true}
+                  showFilters={true}
+                  showCreateButton={true}
+                  onRefresh={handleRefresh}
+                  employeeType="offshore"
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

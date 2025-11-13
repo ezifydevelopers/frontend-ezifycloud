@@ -60,6 +60,14 @@ const LeaveHistoryPage: React.FC = () => {
   const [holidaysLoading, setHolidaysLoading] = useState(true);
 
   const getLeaveTypeDisplayName = (dbValue: string): string => {
+    if (!dbValue) return 'Leave';
+    
+    // Replace underscores with spaces and capitalize each word
+    const formatted = dbValue
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+    
     const typeMap: { [key: string]: string } = {
       'annual': 'Annual Leave',
       'sick': 'Sick Leave',
@@ -68,7 +76,13 @@ const LeaveHistoryPage: React.FC = () => {
       'paternity': 'Paternity Leave',
       'emergency': 'Emergency Leave'
     };
-    return typeMap[dbValue] || dbValue;
+    
+    const lowerValue = dbValue.toLowerCase();
+    if (typeMap[lowerValue]) {
+      return typeMap[lowerValue];
+    }
+    
+    return formatted;
   };
 
   // Fetch public holidays

@@ -280,7 +280,7 @@ export const apiRequest = async <T = unknown>(
     } catch (error) {
       // Network errors (connection refused, timeout, etc.)
       if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
-        const friendlyError = new Error('Backend server is not running. Please start it with: cd backend-ezifycloud && npm run dev');
+        const friendlyError = new Error('Unable to connect to the server. Please check your connection.');
         (friendlyError as any).isConnectionError = true;
         (friendlyError as any).originalError = error;
         console.error('❌ Connection Error:', friendlyError.message);
@@ -477,25 +477,42 @@ export const adminAPI = {
   getLeavePolicies: (params?: LeavePolicyParams): Promise<ApiResponse<PaginatedResponse<LeavePolicy>>> => 
     apiRequest(`/admin/policies${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
   getLeavePolicyById: (id: string): Promise<ApiResponse<LeavePolicy>> => apiRequest(`/admin/policies/${id}`),
-  createLeavePolicy: (policyData: CreateLeavePolicyRequest): Promise<ApiResponse<LeavePolicy>> =>
-    apiRequest('/admin/policies', {
+  createLeavePolicy: (policyData: CreateLeavePolicyRequest, employeeType?: string): Promise<ApiResponse<LeavePolicy>> => {
+    const url = employeeType 
+      ? `/admin/policies?employeeType=${employeeType}`
+      : '/admin/policies';
+    return apiRequest(url, {
       method: 'POST',
       body: JSON.stringify(policyData),
-    }),
-  updateLeavePolicy: (id: string, policyData: UpdateLeavePolicyRequest): Promise<ApiResponse<LeavePolicy>> =>
-    apiRequest(`/admin/policies/${id}`, {
+    });
+  },
+  updateLeavePolicy: (id: string, policyData: UpdateLeavePolicyRequest, employeeType?: string): Promise<ApiResponse<LeavePolicy>> => {
+    const url = employeeType 
+      ? `/admin/policies/${id}?employeeType=${employeeType}`
+      : `/admin/policies/${id}`;
+    return apiRequest(url, {
       method: 'PUT',
       body: JSON.stringify(policyData),
-    }),
-  deleteLeavePolicy: (id: string): Promise<ApiResponse<{ message: string }>> =>
-    apiRequest(`/admin/policies/${id}`, {
+    });
+  },
+  deleteLeavePolicy: (id: string, employeeType?: string): Promise<ApiResponse<{ message: string }>> => {
+    const url = employeeType 
+      ? `/admin/policies/${id}?employeeType=${employeeType}`
+      : `/admin/policies/${id}`;
+    return apiRequest(url, {
       method: 'DELETE',
-    }),
-  toggleLeavePolicyStatus: (id: string, isActive: boolean): Promise<ApiResponse<LeavePolicy>> =>
-    apiRequest(`/admin/policies/${id}/toggle-status`, {
+    });
+  },
+  toggleLeavePolicyStatus: (id: string, isActive: boolean, employeeType?: string): Promise<ApiResponse<LeavePolicy>> => {
+    const url = employeeType 
+      ? `/admin/policies/${id}/toggle-status?employeeType=${employeeType}`
+      : `/admin/policies/${id}/toggle-status`;
+    return apiRequest(url, {
       method: 'PATCH',
       body: JSON.stringify({ isActive }),
-    }),
+    });
+  },
+  getLeavePolicyTypes: (): Promise<ApiResponse<string[]>> => apiRequest('/admin/policies/types'),
   
   // Reports
   getReports: (params?: ReportParams): Promise<ApiResponse<{ reports: string[] }>> => 

@@ -1,3 +1,4 @@
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -110,6 +111,7 @@ import UserApprovalsPage from "@/pages/admin/UserApprovalsPage";
 
 const queryClient = new QueryClient();
 
+// RoleBasedRedirect component - must be used inside AuthProvider
 const RoleBasedRedirect: React.FC = () => {
   const { user, isLoading } = useAuth();
   
@@ -144,8 +146,9 @@ const RoleBasedRedirect: React.FC = () => {
   }
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
       <AuthProvider>
         <DashboardProvider>
@@ -660,6 +663,7 @@ const App = () => (
     </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;

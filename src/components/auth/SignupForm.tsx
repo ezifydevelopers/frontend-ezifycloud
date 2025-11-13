@@ -51,6 +51,9 @@ const signupSchema = z.object({
     .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])/, 'Password must contain at least one lowercase letter, one uppercase letter, and one number'),
   confirmPassword: z.string(),
   department: z.string().min(1, 'Please select a department'),
+  employeeType: z.enum(['onshore', 'offshore']).optional().nullable(),
+  region: z.string().optional().nullable(),
+  timezone: z.string().optional().nullable(),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -132,6 +135,9 @@ const SignupForm: React.FC = () => {
         department: data.department,
         role: 'employee' as const, // Default role for self-signup
         manager_id: null, // No manager assignment during signup
+        employeeType: data.employeeType || null,
+        region: data.region || null,
+        timezone: data.timezone || null,
       };
       
       await signup(signupData);
@@ -352,6 +358,32 @@ const SignupForm: React.FC = () => {
                   )}
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="employeeType" className="text-sm font-medium text-slate-700">
+                    Employee Type <span className="text-red-500">*</span>
+                  </Label>
+                  <Select 
+                    value={watch('employeeType') || 'not_specified'} 
+                    onValueChange={(value) => setValue('employeeType', value === 'not_specified' ? null : value as 'onshore' | 'offshore')}
+                  >
+                    <SelectTrigger className={`bg-white/50 border-slate-200/50 focus:border-blue-300 focus:ring-blue-200 ${
+                      errors.employeeType ? 'border-red-300 focus:border-red-300 focus:ring-red-200' : ''
+                    }`}>
+                      <SelectValue placeholder="Select employee type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white/95 backdrop-blur-sm border-white/20">
+                      <SelectItem value="not_specified">Select Type</SelectItem>
+                      <SelectItem value="onshore">Onshore</SelectItem>
+                      <SelectItem value="offshore">Offshore</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.employeeType && (
+                    <p className="text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.employeeType.message}
+                    </p>
+                  )}
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm font-medium text-slate-700">

@@ -86,9 +86,11 @@ const RequestLeavePage: React.FC = () => {
           title = "⚠️ Insufficient Leave Balance";
           description = `${errorMessage}\n\nPlease adjust your leave request to match your available balance.`;
           variant = 'default'; // Show as warning, not error
-        } else if (errorMessage.includes('Policy violation')) {
+        } else if (errorMessage.includes('Policy violation') || errorMessage.includes('Policy violations')) {
           title = "⚠️ Policy Violation";
-          description = `${errorMessage}\n\nYour request violates leave policy rules. Please review and adjust.`;
+          // Extract the specific violation message(s) after "Policy violation:" or "Policy violations:"
+          const violationDetails = errorMessage.replace(/^Policy violations?:?\s*/i, '').trim();
+          description = violationDetails || errorMessage;
           variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
           title = "💰 Salary Deduction Notice";
@@ -123,9 +125,11 @@ const RequestLeavePage: React.FC = () => {
           title = "⚠️ Insufficient Leave Balance";
           description = `${errorMessage}\n\nPlease adjust your leave request.`;
           variant = 'default'; // Show as warning, not error
-        } else if (errorMessage.includes('Policy violation')) {
+        } else if (errorMessage.includes('Policy violation') || errorMessage.includes('Policy violations')) {
           title = "⚠️ Policy Violation";
-          description = `${errorMessage}\n\nYour request violates leave policy rules.`;
+          // Extract the specific violation message(s) after "Policy violation:" or "Policy violations:"
+          const violationDetails = errorMessage.replace(/^Policy violations?:?\s*/i, '').trim();
+          description = violationDetails || errorMessage;
           variant = 'default'; // Show as warning, not error
         } else if (errorMessage.includes('negative balance') || errorMessage.includes('deducted from salary')) {
           title = "💰 Salary Deduction Notice";
