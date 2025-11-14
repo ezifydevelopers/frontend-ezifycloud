@@ -159,6 +159,11 @@ export const NotificationCenter: React.FC = () => {
     const userId = notification.metadata?.userId as string;
     if (!userId) return;
 
+    // Check if already processed
+    if (notification.read || notification.type !== 'approval_requested') {
+      return;
+    }
+
     try {
       setProcessing(notification.id);
       const response = user?.role === 'admin'
@@ -170,7 +175,16 @@ export const NotificationCenter: React.FC = () => {
           title: 'User Approved',
           description: 'User access has been approved successfully.',
         });
-        markAsRead(notification.id);
+        // Mark as read and update type immediately
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id 
+              ? { ...n, read: true, type: 'approval_approved' } 
+              : n
+          )
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+        // Refresh to get latest state
         fetchNotifications();
       } else {
         throw new Error(response.message || 'Failed to approve user');
@@ -192,6 +206,11 @@ export const NotificationCenter: React.FC = () => {
     const userId = notification.metadata?.userId as string;
     if (!userId) return;
 
+    // Check if already processed
+    if (notification.read || notification.type !== 'approval_requested') {
+      return;
+    }
+
     try {
       setProcessing(notification.id);
       const response = user?.role === 'admin'
@@ -203,7 +222,16 @@ export const NotificationCenter: React.FC = () => {
           title: 'User Rejected',
           description: 'User access has been rejected.',
         });
-        markAsRead(notification.id);
+        // Mark as read and update type immediately
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id 
+              ? { ...n, read: true, type: 'approval_rejected' } 
+              : n
+          )
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+        // Refresh to get latest state
         fetchNotifications();
       } else {
         throw new Error(response.message || 'Failed to reject user');
@@ -341,7 +369,7 @@ export const NotificationCenter: React.FC = () => {
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-[400px] sm:w-[540px]">
+      <SheetContent className="w-[500px] sm:w-[650px] lg:w-[750px]">
         <SheetHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -409,6 +437,9 @@ export const NotificationCenter: React.FC = () => {
                 <div className="space-y-3">
                   {filteredNotifications.map((notification) => {
                     const isApprovalRequest = notification.type === 'approval_requested';
+                    const isApproved = notification.type === 'approval_approved';
+                    const isRejected = notification.type === 'approval_rejected';
+                    const isProcessed = isApproved || isRejected || (notification.read && isApprovalRequest);
                     const userName = notification.metadata?.userName as string || '';
                     const userEmail = notification.metadata?.userEmail as string || '';
                     const userRole = notification.metadata?.userRole as string || '';
@@ -419,8 +450,10 @@ export const NotificationCenter: React.FC = () => {
                         key={notification.id}
                         className={cn(
                           'group relative p-4 rounded-xl border transition-all duration-200',
-                          !notification.read 
+                          !notification.read && !isProcessed
                             ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-sm' 
+                            : isProcessed
+                            ? 'bg-gray-50 border-gray-200 opacity-75'
                             : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
                         )}
                       >
@@ -434,16 +467,31 @@ export const NotificationCenter: React.FC = () => {
                           </div>
 
                           {/* Content */}
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 pr-2">
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-semibold text-sm text-gray-900">{notification.title}</h4>
-                                  {!notification.read && (
-                                    <div className="h-2 w-2 rounded-full bg-blue-600 flex-shrink-0"></div>
+                                  <h4 className={cn(
+                                    "font-semibold text-sm",
+                                    isProcessed ? "text-gray-500 line-through" : "text-gray-900"
+                                  )}>
+                                    {notification.title}
+                                  </h4>
+                                  {!notification.read && !isProcessed && (
+                                    <div className="h-2 w-2 rounded-full bg-blue-600 flex-shrink-0 animate-pulse"></div>
+                                  )}
+                                  {isProcessed && (
+                                    <Badge variant="outline" className="text-xs h-5">
+                                      {isApproved ? "✓ Approved" : isRejected ? "✗ Rejected" : "✓ Processed"}
+                                    </Badge>
                                   )}
                                 </div>
-                                <p className="text-sm text-gray-600 mb-2">{notification.message}</p>
+                                <p className={cn(
+                                  "text-sm mb-2",
+                                  isProcessed ? "text-gray-400" : "text-gray-600"
+                                )}>
+                                  {notification.message}
+                                </p>
                                 
                                 {/* User details for approval requests */}
                                 {isApprovalRequest && userName && (
@@ -455,22 +503,22 @@ export const NotificationCenter: React.FC = () => {
                                         </AvatarFallback>
                                       </Avatar>
                                       <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-sm text-gray-900 truncate">{userName}</p>
+                                        <p className="font-medium text-sm text-gray-900 break-words">{userName}</p>
                                         <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                          <div className="flex items-center gap-1">
-                                            <Mail className="h-3 w-3 text-gray-400" />
-                                            <p className="text-xs text-gray-600 truncate">{userEmail}</p>
+                                          <div className="flex items-center gap-1 min-w-0">
+                                            <Mail className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                            <p className="text-xs text-gray-600 break-all">{userEmail}</p>
                                           </div>
                                           {userRole && (
-                                            <Badge variant="outline" className="text-xs">
+                                            <Badge variant="outline" className="text-xs flex-shrink-0">
                                               {userRole}
                                             </Badge>
                                           )}
                                           {department && (
-                                            <>
-                                              <Building2 className="h-3 w-3 text-gray-400" />
-                                              <p className="text-xs text-gray-600 truncate">{department}</p>
-                                            </>
+                                            <div className="flex items-center gap-1 min-w-0">
+                                              <Building2 className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                              <p className="text-xs text-gray-600 break-words">{department}</p>
+                                            </div>
                                           )}
                                         </div>
                                       </div>
@@ -490,13 +538,13 @@ export const NotificationCenter: React.FC = () => {
                             </div>
 
                             {/* Quick Actions for Approval Requests */}
-                            {isApprovalRequest && notification.metadata?.userId && (
+                            {isApprovalRequest && notification.metadata?.userId && !isProcessed && (
                               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
                                 <Button
                                   size="sm"
                                   onClick={(e) => handleApproveUser(e, notification)}
-                                  disabled={processing === notification.id}
-                                  className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+                                  disabled={processing === notification.id || isProcessed}
+                                  className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white disabled:opacity-50"
                                 >
                                   {processing === notification.id ? (
                                     <Loader2 className="h-3 w-3 mr-2 animate-spin" />
@@ -509,8 +557,8 @@ export const NotificationCenter: React.FC = () => {
                                   size="sm"
                                   variant="destructive"
                                   onClick={(e) => handleRejectUser(e, notification)}
-                                  disabled={processing === notification.id}
-                                  className="flex-1"
+                                  disabled={processing === notification.id || isProcessed}
+                                  className="flex-1 disabled:opacity-50"
                                 >
                                   {processing === notification.id ? (
                                     <Loader2 className="h-3 w-3 mr-2 animate-spin" />
@@ -530,6 +578,52 @@ export const NotificationCenter: React.FC = () => {
                                     className="flex-shrink-0"
                                   >
                                     View
+                                    <ArrowRight className="h-3 w-3 ml-1" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Status Badge for Processed Approvals */}
+                            {isProcessed && (
+                              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                                <Badge 
+                                  variant={isApproved ? "default" : "destructive"}
+                                  className={cn(
+                                    "text-xs",
+                                    isApproved 
+                                      ? "bg-gradient-to-r from-green-500 to-green-600 text-white" 
+                                      : "bg-gradient-to-r from-red-500 to-red-600 text-white"
+                                  )}
+                                >
+                                  {isApproved ? (
+                                    <>
+                                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                                      Approved
+                                    </>
+                                  ) : isRejected ? (
+                                    <>
+                                      <XCircle className="h-3 w-3 mr-1" />
+                                      Rejected
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Processed
+                                    </>
+                                  )}
+                                </Badge>
+                                {notification.link && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNotificationClick(notification);
+                                    }}
+                                    className="ml-auto"
+                                  >
+                                    View Details
                                     <ArrowRight className="h-3 w-3 ml-1" />
                                   </Button>
                                 )}

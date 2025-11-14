@@ -161,7 +161,7 @@ export function withCapacityData<P extends object>(
         // Process employees data
         let totalEmployees = 0;
         let presentToday = 0;
-        let absentToday = 0;
+        let absentToday = 0; // Not used anymore - everyone not on leave is "present"
         let onLeaveToday = 0;
         let workingRemotely = 0;
         const employees: Array<{
@@ -180,7 +180,7 @@ export function withCapacityData<P extends object>(
           const members = Array.isArray(employeesResponse.data) ? employeesResponse.data : employeesResponse.data.data || [];
           totalEmployees = members.length;
           
-          // Get current date for leave checking
+          // Get current date for leave checking (normalize to start of day)
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           
@@ -189,42 +189,42 @@ export function withCapacityData<P extends object>(
           if (leavesResponse.success && leavesResponse.data) {
             const leaves = Array.isArray(leavesResponse.data) ? leavesResponse.data : leavesResponse.data.data || [];
             leaves.forEach((leave: Record<string, unknown>) => {
+              // Only process approved leave requests
+              if (leave.status !== 'approved') return;
+              
               const startDate = new Date(String(leave.startDate || leave.start_date || ''));
               const endDate = new Date(String(leave.endDate || leave.end_date || ''));
               const userId = String(leave.userId || leave.employeeId || leave.employee_id || '');
               
-              // Check if today falls within the leave period
-              if (startDate <= today && today <= endDate && leave.status === 'approved') {
+              // Normalize dates to start of day for accurate comparison
+              startDate.setHours(0, 0, 0, 0);
+              endDate.setHours(0, 0, 0, 0);
+              
+              // Check if today falls within the leave period (inclusive)
+              if (startDate <= today && today <= endDate) {
                 currentLeaves[userId] = true;
               }
             });
           }
           
           // Process each employee
+          // Logic: If employee is NOT on leave, they are considered "present"
+          // Only employees with approved leave for today show as "on-leave"
           members.forEach((member: Record<string, unknown>) => {
             const memberId = String(member.id || '');
-            const isActive = Boolean(member.isActive);
             const isOnLeaveToday = currentLeaves[memberId] || false;
             const lastActive = member.lastLogin || member.updatedAt || new Date().toISOString();
             
-            let status: 'present' | 'absent' | 'on-leave' | 'remote' | 'offline' = 'offline';
+            let status: 'present' | 'absent' | 'on-leave' | 'remote' | 'offline' = 'present';
+            
             if (isOnLeaveToday) {
+              // Employee has approved leave for today
               status = 'on-leave';
               onLeaveToday++;
-            } else if (isActive) {
-              const lastActiveDate = new Date(String(lastActive));
-              const hoursSinceActive = (Date.now() - lastActiveDate.getTime()) / (1000 * 60 * 60);
-              
-              if (hoursSinceActive < 24) {
-                status = 'present';
-                presentToday++;
-              } else {
-                status = 'offline';
-                absentToday++;
-              }
             } else {
-              status = 'offline';
-              absentToday++;
+              // Employee is NOT on leave, so they are present
+              status = 'present';
+              presentToday++;
             }
             
             if (includeEmployeeDetails) {
@@ -236,7 +236,7 @@ export function withCapacityData<P extends object>(
                 position: String(member.position || member.jobTitle || ''),
                 status,
                 lastActive: String(lastActive),
-                isAvailable: isActive && status === 'present',
+                isAvailable: status === 'present', // Available if present (not on leave)
                 avatar: String(member.avatar || '')
               });
             }

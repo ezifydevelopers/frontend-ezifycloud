@@ -113,6 +113,21 @@ interface PolicyFormData {
   employeeType?: 'onshore' | 'offshore' | null;
 }
 
+// Format leave type for display (replace underscores with spaces and capitalize)
+const formatLeaveType = (type: string): string => {
+  if (!type) return '';
+  return type
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// Format policy name for display (replace underscores with spaces)
+const formatPolicyName = (name: string | undefined): string => {
+  if (!name) return '';
+  return name.replace(/_/g, ' ');
+};
+
 // Policy Form Component
 const PolicyForm: React.FC<{
   policy: LeavePolicy | null;
@@ -160,19 +175,28 @@ const PolicyForm: React.FC<{
     .map(p => p.leaveType || p.leave_type || p.type)
     .filter(Boolean);
 
-  // Use leave types from props (passed from parent)
-  const availableLeaveTypes = propAvailableLeaveTypes.length > 0 
-    ? propAvailableLeaveTypes 
-    : ['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency'];
+  // Base leave types that can be used to create policies
+  // These are standard leave types that are always available for both onshore and offshore
+  // IMPORTANT: The dropdown should show base types, not policy-specific types
+  // This allows creating separate policies for onshore and offshore using the same base leave type
+  // (e.g., "sick" for onshore and "sick" for offshore are separate policies)
+  const baseLeaveTypes = ['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency'];
+  
+  // Get custom leave types from API (these are additional types beyond the base types)
+  // Filter out base types to avoid duplicates
+  const apiLeaveTypes = propAvailableLeaveTypes.length > 0 
+    ? propAvailableLeaveTypes.filter(type => !baseLeaveTypes.includes(type.toLowerCase()))
+    : [];
+  
+  // Combine base types with custom API types
+  // Base types are always shown, allowing creation of separate onshore/offshore policies
+  const availableLeaveTypes = [...baseLeaveTypes, ...apiLeaveTypes];
+  
   const loadingTypes = propLoadingTypes;
-
-  // Format leave type for display
-  const formatLeaveType = (type: string): string => {
-    return type
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
+  
+  console.log('🔍 PolicyForm: Available leave types:', availableLeaveTypes);
+  console.log('🔍 PolicyForm: EmployeeType:', employeeType);
+  console.log('🔍 PolicyForm: Existing types for this employeeType:', existingTypes);
 
   // Convert display name to type format (lowercase, underscores)
   const toTypeFormat = (name: string): string => {
@@ -219,7 +243,7 @@ const PolicyForm: React.FC<{
             <div>
               <h4 className="font-medium text-blue-900">Existing Leave Types</h4>
               <p className="text-sm text-blue-700 mt-1">
-                The following leave types already have policies{employeeType ? ` for ${employeeType === 'onshore' ? 'Onshore' : 'Offshore'}` : ''}: <span className="font-medium">{existingTypes.join(', ')}</span>
+                The following leave types already have policies{employeeType ? ` for ${employeeType === 'onshore' ? 'Onshore' : 'Offshore'}` : ''}: <span className="font-medium">{existingTypes.map(t => formatLeaveType(t)).join(', ')}</span>
               </p>
               <p className="text-xs text-blue-600 mt-1">
                 {employeeType 
@@ -295,7 +319,9 @@ const PolicyForm: React.FC<{
                   : 'border-slate-200 focus:border-blue-300'
                 }
               >
-                <SelectValue placeholder="Select leave type" />
+                <SelectValue placeholder="Select leave type">
+                  {formData.type ? formatLeaveType(formData.type) : 'Select leave type'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {loadingTypes ? (
@@ -548,18 +574,25 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
   const fetchLeaveTypes = useCallback(async () => {
     try {
       setLoadingTypes(true);
-      const response = await adminAPI.getLeavePolicyTypes();
+      console.log('🔍 LeavePoliciesTable: Fetching leave types for employeeType:', employeeType);
+      // Pass employeeType to filter leave types by employee type
+      const response = await adminAPI.getLeavePolicyTypes(employeeType || undefined);
       if (response.success && response.data) {
+        console.log('✅ LeavePoliciesTable: Received leave types:', response.data);
         setAvailableLeaveTypes(response.data);
+      } else {
+        console.warn('⚠️ LeavePoliciesTable: API response not successful:', response);
+        // Fallback to default types if API fails
+        setAvailableLeaveTypes(['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency']);
       }
     } catch (error) {
-      console.error('Error fetching leave types:', error);
+      console.error('❌ LeavePoliciesTable: Error fetching leave types:', error);
       // Fallback to default types if API fails
       setAvailableLeaveTypes(['annual', 'sick', 'casual', 'maternity', 'paternity', 'emergency']);
     } finally {
       setLoadingTypes(false);
     }
-  }, []);
+  }, [employeeType]);
 
   useEffect(() => {
     fetchPolicies();
@@ -987,13 +1020,15 @@ const LeavePoliciesTable: React.FC<LeavePoliciesTableProps> = ({
                     >
                       <TableCell>
                         <div>
-                          <p className="font-semibold text-slate-900">{policy.name || policy.leaveType || policy.leave_type || 'Unknown Policy'}</p>
+                          <p className="font-semibold text-slate-900">
+                            {formatPolicyName(policy.name || policy.leaveType || policy.leave_type) || 'Unknown Policy'}
+                          </p>
                           <p className="text-sm text-slate-500">{policy.description}</p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <Badge className={getTypeColor(policy.leaveType || policy.leave_type || policy.type)}>
-                          {policy.leaveType || policy.leave_type || policy.type}
+                          {formatLeaveType(policy.leaveType || policy.leave_type || policy.type || '')}
                         </Badge>
                       </TableCell>
                       <TableCell>

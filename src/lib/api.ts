@@ -512,7 +512,8 @@ export const adminAPI = {
       body: JSON.stringify({ isActive }),
     });
   },
-  getLeavePolicyTypes: (): Promise<ApiResponse<string[]>> => apiRequest('/admin/policies/types'),
+  getLeavePolicyTypes: (employeeType?: string | null): Promise<ApiResponse<string[]>> => 
+    apiRequest(`/admin/policies/types${employeeType ? `?employeeType=${encodeURIComponent(employeeType)}` : ''}`),
   
   // Reports
   getReports: (params?: ReportParams): Promise<ApiResponse<{ reports: string[] }>> => 

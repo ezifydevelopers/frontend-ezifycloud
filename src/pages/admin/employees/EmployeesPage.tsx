@@ -41,6 +41,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -89,6 +90,7 @@ import { User } from '@/types/auth';
 import { adminAPI } from '@/lib/api/adminAPI';
 import { toast } from '@/hooks/use-toast';
 import { useConfirmation } from '@/hooks/useConfirmation';
+import ConfirmationDialog from '@/components/ui/confirmation-dialog';
 import EmployeeForm from './components/EmployeeForm';
 import EmployeeFilters from './components/EmployeeFilters';
 import LeaveBalanceModal from '@/components/admin/LeaveBalanceModal';
@@ -147,7 +149,8 @@ const EmployeesPage: React.FC = () => {
     sortOrder: 'desc' as 'asc' | 'desc'
   });
   
-  const { confirm } = useConfirmation();
+  const confirmation = useConfirmation();
+  const { confirm } = confirmation;
 
   useEffect(() => {
     fetchEmployees();
@@ -271,36 +274,40 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
-  const handleDeleteEmployee = async (employeeId: string, employeeName: string) => {
+  const handlePermanentlyDeleteEmployee = async (employeeId: string, employeeName: string) => {
     const confirmed = await confirm({
-      title: 'Deactivate Employee',
-      description: `Are you sure you want to deactivate ${employeeName}? This will mark them as inactive but preserve their data and leave history.`,
-      confirmText: 'Deactivate',
+      title: '⚠️ PERMANENT DELETE - Cannot Be Undone',
+      description: `Are you absolutely sure you want to PERMANENTLY DELETE ${employeeName}? This action will:\n\n• Permanently remove the employee from the database\n• Delete all leave requests and history\n• Delete all leave balances\n• Delete all attendance records\n• Delete all salary records\n• Remove all associated data\n\n⚠️ THIS ACTION CANNOT BE UNDONE!`,
+      confirmText: 'Yes, Delete Permanently',
+      cancelText: 'Cancel',
       variant: 'destructive',
+      icon: <AlertTriangle className="h-6 w-6 text-red-600" />
     });
 
     if (!confirmed) return;
 
     try {
-      console.log('🔍 EmployeesPage: Deactivating employee:', employeeId);
+      console.log('🔍 EmployeesPage: Permanently deleting employee:', employeeId);
       
       // Show loading state
       toast({
-        title: 'Deactivating employee...',
-        description: 'Please wait while we process your request.',
+        title: 'Permanently deleting employee...',
+        description: 'This may take a moment. All data will be permanently removed.',
+        variant: 'destructive',
       });
       
-      const response = await adminAPI.deleteEmployee(employeeId);
+      const response = await adminAPI.permanentlyDeleteEmployee(employeeId);
       
-      console.log('🔍 EmployeesPage: Delete response:', response);
+      console.log('🔍 EmployeesPage: Permanent delete response:', response);
       
       if (response.success) {
         toast({
-          title: 'Employee deactivated successfully',
-          description: response.message || `${employeeName} has been deactivated successfully. Their data is preserved but they can no longer access the system.`,
+          title: 'Employee Permanently Deleted',
+          description: response.message || `${employeeName} has been permanently deleted from the database.`,
+          variant: 'default',
         });
         
-        // Refresh the list to show updated status
+        // Refresh the list
         await fetchEmployees();
         
         // Also refresh dashboard data if available
@@ -308,13 +315,12 @@ const EmployeesPage: React.FC = () => {
           (window as any).triggerGlobalRefresh();
         }
       } else {
-        throw new Error(response.message || 'Failed to deactivate employee');
+        throw new Error(response.message || 'Failed to permanently delete employee');
       }
     } catch (error: unknown) {
-      console.error('❌ EmployeesPage: Error deactivating employee:', error);
+      console.error('❌ EmployeesPage: Error permanently deleting employee:', error);
       
-      // Check if it's a network error or API error
-      let errorMessage = 'Failed to deactivate employee';
+      let errorMessage = 'Failed to permanently delete employee';
       
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -325,7 +331,88 @@ const EmployeesPage: React.FC = () => {
         } else if (errorObj.status === 401) {
           errorMessage = 'Authentication required. Please log in again.';
         } else if (errorObj.status === 403) {
-          errorMessage = 'You do not have permission to deactivate employees.';
+          errorMessage = 'You do not have permission to permanently delete employees.';
+        } else if (errorObj.status === 404) {
+          errorMessage = 'Employee not found.';
+        } else if (typeof errorObj.status === 'number' && errorObj.status >= 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+      }
+      
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId: string, employeeName: string) => {
+    const confirmed = await confirm({
+      title: 'Delete Employee',
+      description: `Are you sure you want to delete ${employeeName}? This will permanently deactivate the employee and remove their access to the system. Their data and leave history will be preserved for record-keeping purposes.`,
+      confirmText: 'Delete',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      console.log('🔍 EmployeesPage: Deleting employee:', employeeId);
+      
+      // Show loading state
+      toast({
+        title: 'Deleting employee...',
+        description: 'Please wait while we process your request.',
+      });
+      
+      const response = await adminAPI.deleteEmployee(employeeId);
+      
+      console.log('🔍 EmployeesPage: Delete response:', response);
+      
+      if (response.success) {
+        toast({
+          title: 'Employee deleted successfully',
+          description: response.message || `${employeeName} has been deleted successfully. Their data is preserved but they can no longer access the system.`,
+        });
+        
+        // Refresh the list to show updated status
+        await fetchEmployees();
+        
+        // Also refresh dashboard data if available
+        if ((window as any).triggerGlobalRefresh) {
+          (window as any).triggerGlobalRefresh();
+        }
+      } else {
+        // Check if employee is already deactivated
+        if (response.message && response.message.includes('already deactivated')) {
+          toast({
+            title: 'Employee Already Deactivated',
+            description: `${employeeName} is already deactivated. You can reactivate them using the "Activate" option in the actions menu.`,
+            variant: 'default',
+          });
+          // Refresh to show current status
+          await fetchEmployees();
+        } else {
+          throw new Error(response.message || 'Failed to delete employee');
+        }
+      }
+    } catch (error: unknown) {
+      console.error('❌ EmployeesPage: Error deleting employee:', error);
+      
+      // Check if it's a network error or API error
+      let errorMessage = 'Failed to delete employee';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        const errorObj = error as Record<string, unknown>;
+        if (errorObj.name === 'TypeError' && typeof errorObj.message === 'string' && errorObj.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (errorObj.status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (errorObj.status === 403) {
+          errorMessage = 'You do not have permission to delete employees.';
         } else if (errorObj.status === 404) {
           errorMessage = 'Employee not found.';
         } else if (typeof errorObj.status === 'number' && errorObj.status >= 500) {
@@ -1138,6 +1225,46 @@ const EmployeesPage: React.FC = () => {
                             </>
                           )}
                         </DropdownMenuItem>
+                        {employee.isActive && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteEmployee(employee.id, employee.name)}
+                              className="text-orange-600 hover:bg-orange-50 hover:text-orange-700 focus:text-orange-700 focus:bg-orange-50"
+                              aria-label={`Deactivate ${employee.name}`}
+                            >
+                              <UserX className="mr-2 h-4 w-4" />
+                              Deactivate Employee
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handlePermanentlyDeleteEmployee(employee.id, employee.name)}
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 focus:text-red-700 focus:bg-red-50"
+                              aria-label={`Permanently delete ${employee.name}`}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Permanently Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        {!employee.isActive && (
+                          <>
+                            <DropdownMenuItem
+                              disabled
+                              className="text-gray-400 cursor-not-allowed"
+                              aria-label={`${employee.name} is already deactivated`}
+                            >
+                              <UserX className="mr-2 h-4 w-4" />
+                              Already Deactivated
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handlePermanentlyDeleteEmployee(employee.id, employee.name)}
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 focus:text-red-700 focus:bg-red-50"
+                              aria-label={`Permanently delete ${employee.name}`}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Permanently Delete
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -1232,7 +1359,7 @@ const EmployeesPage: React.FC = () => {
       color: 'bg-gradient-to-br from-yellow-500 to-orange-500',
     },
     {
-      title: 'Probation Completed',
+      title: 'Permanent Employees',
       value: probationStats.completed,
       description: 'Completed probation',
       icon: CheckCircle,
@@ -1481,7 +1608,7 @@ const EmployeesPage: React.FC = () => {
               </TabsTrigger>
               <TabsTrigger value="completed" className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" />
-                Completed Probation
+                Permanent Employees
                 <Badge variant="secondary" className="ml-2 bg-green-100 text-green-800">
                   {probationStats.completed}
                 </Badge>
@@ -1519,7 +1646,7 @@ const EmployeesPage: React.FC = () => {
               {filteredEmployees.length === 0 && !loading ? (
                 <div className="text-center py-12">
                   <CheckCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Completed Probations</h3>
+                  <h3 className="text-lg font-semibold mb-2">No Permanent Employees</h3>
                   <p className="text-muted-foreground">No employees have completed their probation period yet.</p>
                 </div>
               ) : (
@@ -1527,7 +1654,7 @@ const EmployeesPage: React.FC = () => {
                   <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle className="h-5 w-5 text-green-600" />
-                      <h3 className="font-semibold text-green-900">Probation Completed</h3>
+                      <h3 className="font-semibold text-green-900">Permanent Employees</h3>
                     </div>
                     <p className="text-sm text-green-800">
                       These employees have successfully completed their probation period and are now permanent employees.
@@ -1737,6 +1864,20 @@ const EmployeesPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        onClose={confirmation.close}
+        onConfirm={confirmation.handleConfirm}
+        title={confirmation.title}
+        description={confirmation.description}
+        confirmText={confirmation.confirmText}
+        cancelText={confirmation.cancelText}
+        variant={confirmation.variant}
+        icon={confirmation.icon}
+        loading={confirmation.loading}
+      />
     </div>
   );
 };

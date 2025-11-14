@@ -298,12 +298,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     {
       title: 'Profile & Settings',
       items: [
-        {
-          icon: User,
-          label: 'My Profile',
-          href: '/employee/profile',
-          description: 'View and edit your profile'
-        },
         { 
           icon: Settings, 
           label: 'Settings', 

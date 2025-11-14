@@ -159,15 +159,52 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
         }
         
         if (response.success && response.data) {
-          const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
+          // Handle both direct array and paginated response
+          let policies: LeavePolicy[] = [];
+          if (Array.isArray(response.data)) {
+            policies = response.data;
+          } else if (response.data && typeof response.data === 'object') {
+            // Check if it's a paginated response with data.data
+            policies = (response.data as any).data || (response.data as any).policies || [];
+          }
+          
           setLeavePolicies(policies);
-          console.log('✅ LeaveRequestForm: Fetched leave policies:', policies);
+          console.log('✅ LeaveRequestForm: API Response:', response);
+          console.log('✅ LeaveRequestForm: Parsed policies:', policies);
+          console.log('✅ LeaveRequestForm: User employeeType:', user.employeeType);
+          
+          // If no policies found, log diagnostic information
+          if (policies.length === 0) {
+            console.warn('⚠️ LeaveRequestForm: No leave policies found.');
+            console.warn('  User ID:', user.id);
+            console.warn('  User Name:', user.name);
+            console.warn('  Employee Type:', user.employeeType || '❌ NOT SET');
+            console.warn('  Possible causes:');
+            if (!user.employeeType) {
+              console.error('  ❌ CRITICAL: Employee has no employeeType assigned!');
+              console.error('     → Solution: Admin must assign employeeType (onshore/offshore) to this employee');
+              console.error('     → Steps: Go to Employees page → Edit employee → Set Employee Type');
+            } else {
+              console.warn('  ⚠️ No leave policies exist for employeeType:', user.employeeType);
+              console.warn('     → Solution: Admin must create leave policies for', user.employeeType, 'employees');
+              console.warn('     → Steps: Go to Leave Policies page → Create policies with employeeType =', user.employeeType);
+            }
+          }
+        } else {
+          console.warn('⚠️ LeaveRequestForm: API response indicates no policies:', response);
+          setLeavePolicies([]);
         }
       } catch (error) {
         console.error('❌ LeaveRequestForm: Error fetching leave policies:', error);
+        console.error('  User ID:', user?.id);
+        console.error('  User Name:', user?.name);
+        console.error('  Employee Type:', user?.employeeType || 'NOT SET');
+        setLeavePolicies([]);
         toast({
-          title: 'Error',
-          description: 'Failed to load leave policies. Using default options.',
+          title: 'Error Loading Leave Policies',
+          description: user?.employeeType 
+            ? `No leave policies found for ${user.employeeType} employees. Please contact your administrator.`
+            : 'Your employee type is not set. Please contact your administrator to assign your employee type.',
           variant: 'destructive',
         });
       } finally {
@@ -303,10 +340,32 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
   };
 
   // Create leave type options from fetched policies
-  const leaveTypeOptions = leavePolicies.map(policy => ({
-    value: policy.leaveType,
-    label: policy.name || policy.leaveType || 'Unknown Policy'
-  }));
+  // Format leave type for display (replace underscores with spaces and capitalize)
+  const formatLeaveType = (type: string | undefined): string => {
+    if (!type) return '';
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  // Format policy name for display (replace underscores with spaces)
+  const formatPolicyName = (name: string | undefined): string => {
+    if (!name) return '';
+    return name.replace(/_/g, ' ');
+  };
+
+  const leaveTypeOptions = leavePolicies.map(policy => {
+    // Use formatted policy name if available, otherwise format the leave type
+    const displayName = policy.name 
+      ? formatPolicyName(policy.name)
+      : formatLeaveType(policy.leaveType);
+    
+    return {
+      value: policy.leaveType,
+      label: displayName || 'Unknown Policy'
+    };
+  });
 
   console.log('🔍 LeaveRequestForm: Leave policies:', leavePolicies);
   console.log('🔍 LeaveRequestForm: Leave type options:', leaveTypeOptions);
@@ -324,10 +383,17 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                 <span className="text-sm text-muted-foreground">Loading leave policies...</span>
               </div>
             ) : leaveTypeOptions.length === 0 ? (
-              <div className="text-center py-4">
-                <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No leave policies available</p>
-                <p className="text-xs text-muted-foreground">Please contact your administrator</p>
+              <div className="text-center py-4 border border-dashed border-slate-300 rounded-lg p-6 bg-slate-50">
+                <AlertCircle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
+                <p className="text-sm font-medium text-slate-700 mb-1">No Leave Policies Available</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  {user?.employeeType 
+                    ? `No leave policies have been configured for ${user.employeeType} employees.`
+                    : 'Your employee type is not set. Please contact your administrator to assign your employee type (onshore/offshore).'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Please contact your administrator to resolve this issue.
+                </p>
               </div>
             ) : (
               <EnhancedSelect 
@@ -345,16 +411,14 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
             {errors.leaveType && (
               <p className="text-sm text-destructive">{errors.leaveType.message}</p>
             )}
-            {/* Paid/Unpaid Indicator (Read-only, auto-detected from policy) */}
-            {leaveType && leavePolicies.length > 0 && (() => {
-              const selectedPolicy = leavePolicies.find(p => p.leaveType === leaveType);
-              // Handle both camelCase (isPaid) and snake_case (is_paid) field names
-              // Check if policy exists and has isPaid field, otherwise default to true (paid)
-              let isPaid = true; // Default to paid
-              if (selectedPolicy) {
-                // Check camelCase first (Prisma default), then snake_case (if API doesn't transform)
-                isPaid = selectedPolicy.isPaid ?? (selectedPolicy as any).is_paid ?? true;
-              }
+            {/* Paid/Unpaid Indicator (Based on leave balance availability) */}
+            {leaveType && leaveBalance[leaveType] && (() => {
+              // Show "Paid Leave" only if employee has balance and requested days are within available balance
+              const requestedDays = calculateTotalDays();
+              const availableBalance = leaveBalance[leaveType].remaining;
+              const hasBalance = availableBalance > 0;
+              const withinBalance = availableBalance >= requestedDays;
+              const isPaid = hasBalance && withinBalance;
               
               return (
                 <div className="mt-2">
@@ -367,7 +431,9 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                       <span className="text-xs text-muted-foreground">
                         {isPaid 
                           ? "This leave will not affect your salary" 
-                          : "This leave will be deducted from your salary"}
+                          : hasBalance && !withinBalance
+                            ? `This leave exceeds your available balance. Excess days will be deducted from your salary.`
+                            : "This leave will be deducted from your salary"}
                       </span>
                     </AlertDescription>
                   </Alert>
@@ -524,7 +590,7 @@ const LeaveRequestForm: React.FC<LeaveRequestFormProps> = ({ onSubmit, className
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm">
-                      <strong>{leaveBalance[leaveType].remaining}</strong> days remaining out of <strong>{leaveBalance[leaveType].total}</strong> total days for {leaveTypeOptions.find(opt => opt.value === leaveType)?.label || leaveType}
+                      <strong>{leaveBalance[leaveType].remaining}</strong> days remaining out of <strong>{leaveBalance[leaveType].total}</strong> total days for {leaveTypeOptions.find(opt => opt.value === leaveType)?.label || formatLeaveType(leaveType)}
                     </span>
                   </div>
                   {leaveBalance[leaveType].remaining < calculateTotalDays() && (

@@ -83,8 +83,10 @@ const LeaveBalanceOverviewCard: React.FC<LeaveBalanceOverviewCardProps> = ({
           <p className="text-slate-600 text-sm mt-2">{description}</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {Object.entries(leaveBalance).length > 0 ? (
-            Object.entries(leaveBalance).map(([type, balance], index) => {
+          {Object.entries(leaveBalance).filter(([key, _]) => key !== 'total').length > 0 ? (
+            Object.entries(leaveBalance)
+              .filter(([key, _]) => key !== 'total') // Exclude the 'total' summary key, but show all leave types
+              .map(([type, balance], index) => {
               const percentage = balance.total > 0 ? (balance.used / balance.total) * 100 : 0;
               const progressColor = getProgressColor(percentage);
               const typeColor = getLeaveTypeColor(type);
@@ -132,7 +134,10 @@ const LeaveBalanceOverviewCard: React.FC<LeaveBalanceOverviewCardProps> = ({
                   <CheckCircle className="h-8 w-8 text-blue-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-700 mb-2">{emptyStateTitle}</h3>
-                <p className="text-slate-500">{emptyStateDescription}</p>
+                <p className="text-slate-500 mb-2">{emptyStateDescription}</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Please contact your administrator if you believe this is an error.
+                </p>
               </div>
             )
           )}

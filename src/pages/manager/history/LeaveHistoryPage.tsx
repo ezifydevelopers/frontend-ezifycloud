@@ -47,7 +47,7 @@ interface LeaveRequest {
   days: number;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
-  priority: 'low' | 'medium' | 'high';
+  priority?: 'low' | 'medium' | 'high';
   emergencyContact?: string;
   workHandover?: string;
   isHalfDay: boolean;
@@ -235,7 +235,10 @@ const LeaveHistoryPage: React.FC = () => {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority?: string | null) => {
+    if (!priority) {
+      return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
     switch (priority.toLowerCase()) {
       case 'high': return 'bg-red-100 text-red-800 border-red-200';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -462,9 +465,11 @@ const LeaveHistoryPage: React.FC = () => {
                                 {getStatusIcon(request.status)}
                                 <span className="ml-1">{request.status}</span>
                               </Badge>
-                              <Badge className={`text-xs ${getPriorityColor(request.priority)}`}>
-                                {request.priority} priority
-                              </Badge>
+                              {request.priority && (
+                                <Badge className={`text-xs ${getPriorityColor(request.priority)}`}>
+                                  {request.priority} priority
+                                </Badge>
+                              )}
                               {request.isHalfDay && (
                                 <Badge variant="outline" className="text-xs">
                                   Half Day ({request.halfDayPeriod})

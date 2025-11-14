@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -284,8 +284,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
             </div>
           </div>
 
-          {/* Employee Type and Region - Only for employees */}
-          {watchedRole === 'employee' && (
+          {/* Employee Type and Region - For employees and managers */}
+          {(watchedRole === 'employee' || watchedRole === 'manager') && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="employeeType">Employee Type</Label>
@@ -316,7 +316,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
             </div>
           )}
 
-          {watchedRole === 'employee' && watch('employeeType') && (
+          {/* Timezone - For employees and managers when employeeType is set */}
+          {(watchedRole === 'employee' || watchedRole === 'manager') && watch('employeeType') && (
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
               <Select

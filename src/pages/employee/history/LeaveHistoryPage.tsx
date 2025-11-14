@@ -71,6 +71,7 @@ interface LeaveRequest {
   workHandover?: string;
   isHalfDay?: boolean;
   halfDayPeriod?: string;
+  isPaid?: boolean;
   comments?: string;
   attachments?: string[];
 }
@@ -93,6 +94,7 @@ const LeaveHistoryPage: React.FC = () => {
     total: 0,
     totalPages: 0
   });
+  const [leavePolicies, setLeavePolicies] = useState<Array<{ leaveType: string }>>([]);
 
   // Helper function to convert database leave type to display name
   const getLeaveTypeDisplayName = (dbValue: string): string => {
@@ -120,6 +122,25 @@ const LeaveHistoryPage: React.FC = () => {
     
     return formatted;
   };
+
+  // Fetch leave policies to get available leave types
+  const fetchLeavePolicies = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+      if (response.success && response.data) {
+        const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setLeavePolicies(policies);
+        console.log('✅ LeaveHistoryPage (history): Fetched leave policies:', policies);
+      } else {
+        setLeavePolicies([]);
+      }
+    } catch (error) {
+      console.error('Error fetching leave policies:', error);
+      setLeavePolicies([]);
+    }
+  }, [user]);
 
   const fetchLeaveBalance = useCallback(async () => {
     try {
@@ -247,10 +268,11 @@ const LeaveHistoryPage: React.FC = () => {
 
   useEffect(() => {
     if (user !== undefined) {
+      fetchLeavePolicies();
       fetchLeaveRequests();
       fetchLeaveBalance();
     }
-  }, [filters, user, fetchLeaveRequests, fetchLeaveBalance]);
+  }, [filters, user, fetchLeavePolicies, fetchLeaveRequests, fetchLeaveBalance]);
 
   const filteredRequests = leaveRequests.filter(request => {
     const displayName = getLeaveTypeDisplayName(request.leaveType);
@@ -304,6 +326,13 @@ const LeaveHistoryPage: React.FC = () => {
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  const getPaidStatusColor = (isPaid: boolean | undefined) => {
+    if (isPaid === undefined) return 'bg-gray-100 text-gray-800 border-gray-200';
+    return isPaid 
+      ? 'bg-blue-100 text-blue-800 border-blue-200' 
+      : 'bg-orange-100 text-orange-800 border-orange-200';
   };
 
   // Calculate statistics
@@ -447,10 +476,11 @@ const LeaveHistoryPage: React.FC = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="annual">Annual Leave</SelectItem>
-                      <SelectItem value="sick">Sick Leave</SelectItem>
-                      <SelectItem value="casual">Casual Leave</SelectItem>
-                      <SelectItem value="emergency">Emergency Leave</SelectItem>
+                      {leavePolicies.map((policy) => (
+                        <SelectItem key={policy.leaveType} value={policy.leaveType}>
+                          {getLeaveTypeDisplayName(policy.leaveType)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Select value={filters.year} onValueChange={(value) => setFilters(prev => ({ ...prev, year: value }))}>
@@ -561,9 +591,16 @@ const LeaveHistoryPage: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(request.status)}>
-                          {request.status}
-                        </Badge>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className={getStatusColor(request.status)}>
+                            {request.status}
+                          </Badge>
+                          {request.status === 'approved' && (
+                            <Badge className={getPaidStatusColor(request.isPaid)}>
+                              {request.isPaid ? 'Paid' : 'Unpaid'}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge className={getPriorityColor(request.priority)}>
@@ -601,7 +638,7 @@ const LeaveHistoryPage: React.FC = () => {
                                   reason: request.reason,
                                   status: request.status,
                                   priority: request.priority || 'medium',
-                                  isPaid: true, // Default, can be updated if available
+                                  isPaid: request.isPaid ?? true, // Use actual isPaid value from request
                                   isHalfDay: request.isHalfDay || false,
                                   halfDayPeriod: request.halfDayPeriod as any,
                                   submittedAt: request.submittedAt,

@@ -38,6 +38,7 @@ const LeaveReportsPage: React.FC = () => {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [reportsLoading, setReportsLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear().toString());
+  const [leavePolicies, setLeavePolicies] = useState<Array<{ leaveType: string }>>([]);
 
   // Public Holidays state
   const [upcomingHolidays, setUpcomingHolidays] = useState<Record<string, unknown>[]>([]);
@@ -68,6 +69,25 @@ const LeaveReportsPage: React.FC = () => {
     
     return formatted;
   };
+
+  // Fetch leave policies to get available leave types
+  const fetchLeavePolicies = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+      if (response.success && response.data) {
+        const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setLeavePolicies(policies);
+        console.log('✅ LeaveReportsPage: Fetched leave policies:', policies);
+      } else {
+        setLeavePolicies([]);
+      }
+    } catch (error) {
+      console.error('Error fetching leave policies:', error);
+      setLeavePolicies([]);
+    }
+  }, [user]);
 
   // Fetch public holidays
   const fetchUpcomingHolidays = useCallback(async () => {
@@ -124,7 +144,8 @@ const LeaveReportsPage: React.FC = () => {
 
   useEffect(() => {
     fetchUpcomingHolidays();
-  }, [fetchUpcomingHolidays]);
+    fetchLeavePolicies();
+  }, [fetchUpcomingHolidays, fetchLeavePolicies]);
 
   useEffect(() => {
     fetchLeaveHistory();
@@ -298,33 +319,41 @@ const LeaveReportsPage: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {['annual', 'sick', 'casual', 'emergency'].map((type) => {
-                        const typeRequests = leaveRequests.filter(r => r.leaveType === type);
-                        const approvedTypeRequests = typeRequests.filter(r => r.status === 'approved');
-                        const totalDays = approvedTypeRequests.reduce((sum, r) => sum + r.days, 0);
-                        
-                        return (
-                          <div key={type} className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-slate-700">
-                                {getLeaveTypeDisplayName(type)}
-                              </span>
-                              <span className="text-sm text-slate-600">
-                                {typeRequests.length} requests • {totalDays} days used
-                              </span>
+                      {leavePolicies.length > 0 ? (
+                        leavePolicies.map((policy) => {
+                          const type = policy.leaveType;
+                          const typeRequests = leaveRequests.filter(r => r.leaveType === type);
+                          const approvedTypeRequests = typeRequests.filter(r => r.status === 'approved');
+                          const totalDays = approvedTypeRequests.reduce((sum, r) => sum + r.days, 0);
+                          
+                          return (
+                            <div key={type} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-slate-700">
+                                  {getLeaveTypeDisplayName(type)}
+                                </span>
+                                <span className="text-sm text-slate-600">
+                                  {typeRequests.length} requests • {totalDays} days used
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-2">
+                                <div 
+                                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                                  style={{ 
+                                    width: `${totalRequests > 0 ? (typeRequests.length / totalRequests) * 100 : 0}%` 
+                                  }}
+                                />
+                              </div>
                             </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2">
-                              <div 
-                                className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-                                style={{ 
-                                  width: `${totalRequests > 0 ? (typeRequests.length / totalRequests) * 100 : 0}%` 
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {totalRequests === 0 && (
+                          );
+                        })
+                      ) : (
+                        <div className="text-center py-8">
+                          <BarChart3 className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                          <p className="text-slate-500">No leave policies configured</p>
+                        </div>
+                      )}
+                      {totalRequests === 0 && leavePolicies.length > 0 && (
                         <div className="text-center py-8">
                           <BarChart3 className="h-12 w-12 text-slate-400 mx-auto mb-4" />
                           <p className="text-slate-500">No data available for {year}</p>

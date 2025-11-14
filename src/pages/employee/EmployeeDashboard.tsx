@@ -76,6 +76,17 @@ interface DashboardData {
       managerEmail: string;
       department: string;
     };
+    personalInfo?: {
+      id: string;
+      name: string;
+      email: string;
+      department: string;
+      position: string;
+      managerName?: string;
+      joinDate: Date | string;
+      avatar?: string;
+      isActive: boolean;
+    };
   };
 }
 
@@ -399,6 +410,44 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
     return formatted.toLowerCase().includes('leave') ? formatted : `${formatted} Leave`;
   };
 
+  // Calculate tenure from join date
+  const calculateTenure = (joinDate: Date | string | null | undefined): string => {
+    if (!joinDate) return 'N/A';
+    
+    const startDate = new Date(joinDate);
+    const currentDate = new Date();
+    
+    if (isNaN(startDate.getTime())) return 'N/A';
+    
+    let years = currentDate.getFullYear() - startDate.getFullYear();
+    let months = currentDate.getMonth() - startDate.getMonth();
+    let days = currentDate.getDate() - startDate.getDate();
+    
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
+      days += lastMonth.getDate();
+    }
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    const parts: string[] = [];
+    if (years > 0) {
+      parts.push(`${years} ${years === 1 ? 'year' : 'years'}`);
+    }
+    if (months > 0) {
+      parts.push(`${months} ${months === 1 ? 'month' : 'months'}`);
+    }
+    if (days > 0 && years === 0 && months === 0) {
+      parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
+    }
+    
+    return parts.length > 0 ? parts.join(', ') : 'Less than a day';
+  };
+
   const getStatusVariant = (status: string) => {
     switch (status) {
       case 'approved':
@@ -704,14 +753,6 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                       Leave Reports
                     </Button>
                     <Button
-                      onClick={() => navigate('/employee/profile')}
-                      variant="outline"
-                      className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
-                    >
-                      <User className="h-5 w-5 mr-3" />
-                      My Profile
-                    </Button>
-                    <Button
                       onClick={() => navigate('/employee/settings')}
                       variant="outline"
                       className="w-full justify-start h-12 text-base font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
@@ -792,6 +833,19 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                       <div>
                         <p className="text-sm font-medium text-muted-foreground mb-1">Department</p>
                         <p className="text-lg font-semibold">{user?.department || dashboardData?.stats?.teamInfo?.department || 'Not assigned'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Tenure</p>
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4 text-slate-500" />
+                          <p className="text-lg font-semibold">
+                            {calculateTenure(
+                              dashboardData?.stats?.personalInfo?.joinDate || 
+                              user?.joinDate || 
+                              null
+                            )}
+                          </p>
+                        </div>
                       </div>
                     </div>
                     {user?.employeeType === 'offshore' && (

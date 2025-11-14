@@ -47,6 +47,9 @@ interface EmployeeProfile {
   avatar: string;
   bio: string;
   emergencyContact: string;
+  skills?: string[];
+  certifications?: string[];
+  achievements?: string[];
   leaveBalance: {
     annual: number;
     sick: number;
@@ -196,7 +199,6 @@ const EmployeeProfilePage: React.FC = () => {
         setProfile(updatedProfile);
         setEditData(updatedProfile);
         setIsEditing(false);
-        setHasUnsavedChanges(false);
         
         toast({
           title: 'Profile updated',

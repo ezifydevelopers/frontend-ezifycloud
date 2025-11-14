@@ -92,6 +92,7 @@ export function withLeaveBalance<P extends object>(
           console.log('✅ withLeaveBalance: Leave balance fetched:', balance);
           console.log('✅ withLeaveBalance: Balance type:', typeof balance);
           console.log('✅ withLeaveBalance: Balance keys:', Object.keys(balance));
+          console.log('✅ withLeaveBalance: User info:', { id: user.id, role: user.role, employeeType: user.employeeType });
           
           // Process the balance data to match our interface
           const processedBalance: LeaveBalanceData = {};
@@ -112,6 +113,10 @@ export function withLeaveBalance<P extends object>(
             } else {
               // Handle regular user leave balance structure
               Object.entries(balance).forEach(([key, value]) => {
+                // Skip the 'total' summary key, but include all leave type keys
+                if (key === 'total') {
+                  return;
+                }
                 if (typeof value === 'object' && value !== null && 'total' in value && 'used' in value && 'remaining' in value) {
                   processedBalance[key] = {
                     total: Number(value.total) || 0,
@@ -124,9 +129,33 @@ export function withLeaveBalance<P extends object>(
           }
           
           console.log('✅ withLeaveBalance: Processed balance:', processedBalance);
+          console.log('✅ withLeaveBalance: Processed balance keys:', Object.keys(processedBalance));
+          console.log('✅ withLeaveBalance: Processed balance count:', Object.keys(processedBalance).length);
+          
+          // If no leave types found, log a detailed warning
+          if (Object.keys(processedBalance).length === 0) {
+            const employeeType = user.employeeType;
+            console.warn('⚠️ withLeaveBalance: No leave types found in processed balance.');
+            console.warn('  Employee ID:', user.id);
+            console.warn('  Employee Name:', user.name);
+            console.warn('  Employee Type:', employeeType || '❌ NOT SET (this is the problem!)');
+            console.warn('  Possible causes:');
+            if (!employeeType) {
+              console.error('  ❌ CRITICAL: Employee has no employeeType assigned!');
+              console.error('     → Solution: Admin must assign employeeType (onshore/offshore) to this employee');
+              console.error('     → Steps: Go to Employees page → Edit employee → Set Employee Type');
+            } else {
+              console.warn('  ⚠️ No leave policies exist for employeeType:', employeeType);
+              console.warn('     → Solution: Admin must create leave policies for', employeeType, 'employees');
+              console.warn('     → Steps: Go to Leave Policies page → Create policies with employeeType =', employeeType);
+            }
+            console.warn('  Raw balance data:', JSON.stringify(balance, null, 2));
+          }
+          
           setLeaveBalance(processedBalance);
           setLastFetch(now);
         } else {
+          console.error('❌ withLeaveBalance: API response not successful:', response);
           throw new Error(response.message || 'Failed to fetch leave balance');
         }
       } catch (err) {

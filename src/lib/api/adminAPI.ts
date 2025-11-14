@@ -86,6 +86,26 @@ export const adminAPI = {
     }>;
   }>>> =>
     apiRequest(`/admin/employees/paid-unpaid-leaves${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+
+  getMonthlyPaidUnpaidLeaveStats: (params?: { department?: string; year?: number; employeeId?: string }): Promise<ApiResponse<Array<{
+    employeeId: string;
+    employeeName: string;
+    employeeEmail: string;
+    department: string | null;
+    monthlyStats: Array<{
+      month: number;
+      monthName: string;
+      paidDays: number;
+      unpaidDays: number;
+      totalDays: number;
+    }>;
+    yearlyTotal: {
+      paidDays: number;
+      unpaidDays: number;
+      totalDays: number;
+    };
+  }>>> =>
+    apiRequest(`/admin/employees/monthly-paid-unpaid-leaves${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
   
   createEmployee: (employeeData: CreateEmployeeRequest): Promise<ApiResponse<User>> =>
     apiRequest('/admin/employees', {
@@ -101,6 +121,11 @@ export const adminAPI = {
   
   deleteEmployee: (id: string): Promise<ApiResponse<{ message: string }>> =>
     apiRequest(`/admin/employees/${id}`, {
+      method: 'DELETE',
+    }),
+  
+  permanentlyDeleteEmployee: (id: string): Promise<ApiResponse<{ message: string }>> =>
+    apiRequest(`/admin/employees/${id}/permanent`, {
       method: 'DELETE',
     }),
   

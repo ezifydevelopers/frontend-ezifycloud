@@ -219,6 +219,14 @@ const App = () => {
               </ProtectedRoute>
             } />
             
+            <Route path="/manager/leave-management/paid-unpaid-leaves" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DashboardLayout>
+                  <PaidUnpaidLeavesPage />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/admin/leave-management/reports" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <DashboardLayout>

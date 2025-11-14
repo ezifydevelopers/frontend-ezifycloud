@@ -82,6 +82,26 @@ export const managerAPI = {
   
   getTeamStats: (): Promise<ApiResponse<TeamStats>> => apiRequest('/manager/team/stats'),
   
+  getTeamMonthlyLeaveStats: (params?: { department?: string; year?: number }): Promise<ApiResponse<Array<{
+    employeeId: string;
+    employeeName: string;
+    employeeEmail: string;
+    department: string | null;
+    monthlyStats: Array<{
+      month: number;
+      monthName: string;
+      paidDays: number;
+      unpaidDays: number;
+      totalDays: number;
+    }>;
+    yearlyTotal: {
+      paidDays: number;
+      unpaidDays: number;
+      totalDays: number;
+    };
+  }>>> =>
+    apiRequest(`/manager/team/monthly-leave-stats${params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''}`),
+  
   getTeamDepartments: (): Promise<ApiResponse<string[]>> => apiRequest('/manager/team/departments'),
   
   getTeamMemberPerformance: (id: string): Promise<ApiResponse<TeamMemberPerformance>> => apiRequest(`/manager/team/members/${id}/performance`),

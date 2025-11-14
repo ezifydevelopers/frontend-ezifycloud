@@ -36,7 +36,6 @@ import PageHeader from '@/components/layout/PageHeader';
 import { withCapacityData, WithCapacityDataProps } from '@/components/hoc/withCapacityData';
 import OfficeCapacityCards from '@/components/capacity/OfficeCapacityCards';
 import DepartmentCapacityCard from '@/components/capacity/DepartmentCapacityCard';
-import EmployeeStatusOverview from '@/components/capacity/EmployeeStatusOverview';
 
 interface AdminCapacityPageProps extends WithCapacityDataProps {}
 
@@ -228,83 +227,6 @@ const AdminCapacityPage: React.FC<AdminCapacityPageProps> = ({
           </Card>
         </div>
 
-        {/* Detailed Employee List */}
-        <div className="mb-8">
-          <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-lg">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg">
-                    <Users className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">All Employees</CardTitle>
-                    <p className="text-sm text-muted-foreground">Complete employee status overview</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    {capacityData.presentToday} present
-                  </Badge>
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                    {capacityData.onLeaveToday} on leave
-                  </Badge>
-                  <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
-                    {capacityData.absentToday} absent
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {filteredEmployees.length > 0 ? (
-                  filteredEmployees.map((employee) => (
-                    <div
-                      key={employee.id}
-                      className="flex items-center justify-between p-4 bg-slate-50/50 rounded-lg border border-slate-200/50 hover:bg-slate-100/50 transition-colors"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <Avatar className="h-12 w-12">
-                          <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold">
-                            {employee.name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-semibold text-slate-900">{employee.name}</p>
-                          <p className="text-sm text-slate-600">{employee.department} • {employee.position}</p>
-                          <p className="text-xs text-slate-500">{employee.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <Badge 
-                          variant="outline" 
-                          className={getStatusColor(employee.status)}
-                        >
-                          <div className="flex items-center space-x-1">
-                            {getStatusIcon(employee.status)}
-                            <span>{getStatusText(employee.status)}</span>
-                          </div>
-                        </Badge>
-                        <div className="text-xs text-slate-400 text-right">
-                          <div className="flex items-center space-x-1">
-                            <Clock className="h-3 w-3" />
-                            <span>{formatLastActive(employee.lastActive)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-12">
-                    <Users className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-                    <p className="text-slate-500">No employees found matching the selected filters</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Main Content Grid */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Department Breakdown */}
@@ -314,12 +236,78 @@ const AdminCapacityPage: React.FC<AdminCapacityPageProps> = ({
             />
           </div>
 
-          {/* Employee Status Overview */}
+          {/* Employee Status Overview - Consolidated View */}
           <div className="lg:col-span-2">
-            <EmployeeStatusOverview 
-              capacityData={capacityData}
-              maxDisplay={20}
-            />
+            <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-lg">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg">
+                      <Users className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">All Employees</CardTitle>
+                      <p className="text-sm text-muted-foreground">Complete employee status overview</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      {capacityData.presentToday} present
+                    </Badge>
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                      {capacityData.onLeaveToday} on leave
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {filteredEmployees.length > 0 ? (
+                    filteredEmployees.map((employee) => (
+                      <div
+                        key={employee.id}
+                        className="flex items-center justify-between p-4 bg-slate-50/50 rounded-lg border border-slate-200/50 hover:bg-slate-100/50 transition-colors"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <Avatar className="h-12 w-12">
+                            <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold">
+                              {employee.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-semibold text-slate-900">{employee.name}</p>
+                            <p className="text-sm text-slate-600">{employee.department} • {employee.position}</p>
+                            <p className="text-xs text-slate-500">{employee.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <Badge 
+                            variant="outline" 
+                            className={getStatusColor(employee.status)}
+                          >
+                            <div className="flex items-center space-x-1">
+                              {getStatusIcon(employee.status)}
+                              <span>{getStatusText(employee.status)}</span>
+                            </div>
+                          </Badge>
+                          <div className="text-xs text-slate-400 text-right">
+                            <div className="flex items-center space-x-1">
+                              <Clock className="h-3 w-3" />
+                              <span>{formatLastActive(employee.lastActive)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12">
+                      <Users className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                      <p className="text-slate-500">No employees found matching the selected filters</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

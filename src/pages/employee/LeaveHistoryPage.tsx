@@ -54,6 +54,7 @@ const LeaveHistoryPage: React.FC = () => {
     total: 0,
     totalPages: 0
   });
+  const [leavePolicies, setLeavePolicies] = useState<Array<{ leaveType: string }>>([]);
 
   // Public Holidays state
   const [upcomingHolidays, setUpcomingHolidays] = useState<Record<string, unknown>[]>([]);
@@ -84,6 +85,25 @@ const LeaveHistoryPage: React.FC = () => {
     
     return formatted;
   };
+
+  // Fetch leave policies to get available leave types
+  const fetchLeavePolicies = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const response = await employeeAPI.getLeavePolicies({ status: 'active', limit: 50 });
+      if (response.success && response.data) {
+        const policies = Array.isArray(response.data) ? response.data : response.data.data || [];
+        setLeavePolicies(policies);
+        console.log('✅ LeaveHistoryPage: Fetched leave policies:', policies);
+      } else {
+        setLeavePolicies([]);
+      }
+    } catch (error) {
+      console.error('Error fetching leave policies:', error);
+      setLeavePolicies([]);
+    }
+  }, [user]);
 
   // Fetch public holidays
   const fetchUpcomingHolidays = useCallback(async () => {
@@ -159,7 +179,8 @@ const LeaveHistoryPage: React.FC = () => {
 
   useEffect(() => {
     fetchUpcomingHolidays();
-  }, [fetchUpcomingHolidays]);
+    fetchLeavePolicies();
+  }, [fetchUpcomingHolidays, fetchLeavePolicies]);
 
   useEffect(() => {
     fetchLeaveHistory();
@@ -272,10 +293,11 @@ const LeaveHistoryPage: React.FC = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Types</SelectItem>
-                          <SelectItem value="annual">Annual Leave</SelectItem>
-                          <SelectItem value="sick">Sick Leave</SelectItem>
-                          <SelectItem value="casual">Casual Leave</SelectItem>
-                          <SelectItem value="emergency">Emergency Leave</SelectItem>
+                          {leavePolicies.map((policy) => (
+                            <SelectItem key={policy.leaveType} value={policy.leaveType}>
+                              {getLeaveTypeDisplayName(policy.leaveType)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <Button
@@ -339,16 +361,16 @@ const LeaveHistoryPage: React.FC = () => {
                                 <Badge variant="outline" className={`text-xs ${getStatusColor(request.status)}`}>
                                   {request.status}
                                 </Badge>
-                                {request.isPaid !== undefined && (
+                                {request.status === 'approved' && (
                                   <Badge 
                                     variant="outline" 
                                     className={`text-xs ${
-                                      request.isPaid 
-                                        ? "bg-green-50 text-green-700 border-green-200" 
+                                      (request.isPaid ?? true)
+                                        ? "bg-blue-50 text-blue-700 border-blue-200" 
                                         : "bg-orange-50 text-orange-700 border-orange-200"
                                     }`}
                                   >
-                                    {request.isPaid ? 'Paid' : 'Unpaid'}
+                                    {(request.isPaid ?? true) ? 'Paid' : 'Unpaid'}
                                   </Badge>
                                 )}
                                 {request.isHalfDay && (

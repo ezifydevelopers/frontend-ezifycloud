@@ -127,6 +127,15 @@ const LeaveBalanceModal: React.FC<LeaveBalanceModalProps> = ({
     }
   };
 
+  // Format leave type for display (replace underscores with spaces and capitalize)
+  const formatLeaveType = (type: string): string => {
+    if (!type) return '';
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const getLeaveTypeIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'annual': return '🏖️';
@@ -269,7 +278,7 @@ const LeaveBalanceModal: React.FC<LeaveBalanceModalProps> = ({
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <span className="text-lg">{getLeaveTypeIcon(type)}</span>
-                            <span className="font-semibold capitalize">{type} Leave</span>
+                            <span className="font-semibold">{formatLeaveType(type)} Leave</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
                             {balance.used.toFixed(1)} / {balance.total} days
