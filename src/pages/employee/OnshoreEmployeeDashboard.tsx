@@ -499,6 +499,12 @@ const OnshoreEmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                         <MapPin className="h-3 w-3 mr-1" />
                         Onshore
                       </Badge>
+                      {user?.department && (
+                        <Badge className="bg-slate-100 text-slate-800 border-slate-200">
+                          <Building2 className="h-3 w-3 mr-1" />
+                          {user.department}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <p className="text-slate-600 text-base lg:text-lg">

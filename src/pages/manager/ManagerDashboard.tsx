@@ -150,7 +150,7 @@ const ManagerDashboard: React.FC<WithDashboardDataProps> = ({
         {/* Header */}
         <PageHeader
           title="Manager Dashboard"
-          subtitle={`Welcome back, ${user?.name || 'Manager'}`}
+          subtitle={`Welcome back, ${user?.name || 'Manager'}${user?.department ? ` • ${user.department}` : ''}`}
           icon={LayoutDashboard}
           iconColor="from-blue-600 to-purple-600"
         >
