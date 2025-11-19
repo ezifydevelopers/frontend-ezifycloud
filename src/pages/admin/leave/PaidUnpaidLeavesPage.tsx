@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { adminAPI } from '@/lib/api/adminAPI';
 import { useAuth } from '@/contexts/AuthContext';
 import { managerAPI } from '@/lib/api/managerAPI';
@@ -54,6 +54,8 @@ interface PaidUnpaidLeaveStats {
   employeeId: string;
   employeeName: string;
   employeeEmail: string;
+  employeeIdNumber?: string | null;
+  employeeType?: 'onshore' | 'offshore' | null;
   department: string | null;
   totalPaidDays: number;
   totalUnpaidDays: number;
@@ -80,6 +82,8 @@ interface MonthlyLeaveStats {
   employeeId: string;
   employeeName: string;
   employeeEmail: string;
+  employeeIdNumber?: string | null;
+  employeeType?: 'onshore' | 'offshore' | null;
   department: string | null;
   monthlyStats: Array<{
     month: number;
@@ -108,11 +112,13 @@ const PaidUnpaidLeavesPage: React.FC = () => {
     year: new Date().getFullYear(),
     search: ''
   });
+  const [employeeTypeFilter, setEmployeeTypeFilter] = useState<'all' | 'onshore' | 'offshore'>('all');
   const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set());
   const [selectedEmployee, setSelectedEmployee] = useState<PaidUnpaidLeaveStats | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const lastProcessedTimestampRef = useRef<number | null>(null);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -126,6 +132,8 @@ const PaidUnpaidLeavesPage: React.FC = () => {
       const response = await adminAPI.getPaidUnpaidLeaveStats(params);
       
       if (response.success && response.data) {
+        console.log('🔍 PaidUnpaidLeavesPage: Received stats data:', response.data);
+        console.log('🔍 First employee data:', response.data[0]);
         setStats(response.data as PaidUnpaidLeaveStats[]);
       } else {
         setError(response.message || 'Failed to fetch leave statistics');
@@ -135,9 +143,9 @@ const PaidUnpaidLeavesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters.year, filters.department]);
 
-  const fetchMonthlyStats = async () => {
+  const fetchMonthlyStats = useCallback(async () => {
     try {
       setLoadingMonthly(true);
       setError(null);
@@ -167,7 +175,7 @@ const PaidUnpaidLeavesPage: React.FC = () => {
     } finally {
       setLoadingMonthly(false);
     }
-  };
+  }, [filters.year, filters.department, user?.role]);
 
   useEffect(() => {
     if (viewMode === 'yearly') {
@@ -176,6 +184,99 @@ const PaidUnpaidLeavesPage: React.FC = () => {
       fetchMonthlyStats();
     }
   }, [filters.department, filters.year, viewMode]);
+
+  // Listen for global refresh events (e.g., when paid/unpaid status is updated in Leave Requests)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'global-refresh' && e.newValue) {
+        try {
+          const refreshData = JSON.parse(e.newValue);
+          // Refresh if it's a leave-related update
+          if (refreshData.type === 'leave' || refreshData.type === 'all') {
+            if (viewMode === 'yearly') {
+              fetchStats();
+            } else {
+              fetchMonthlyStats();
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing global refresh data:', err);
+        }
+      }
+      // Also listen for dashboard-refresh events
+      if (e.key === 'dashboard-refresh' && e.newValue) {
+        if (viewMode === 'yearly') {
+          fetchStats();
+        } else {
+          fetchMonthlyStats();
+        }
+      }
+    };
+
+    // Listen for storage events (cross-tab communication)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check for refresh events in the same tab (using a polling mechanism)
+    const checkForRefresh = () => {
+      // Capture the ref value at the start of the function to ensure it's accessible
+      const lastProcessed = lastProcessedTimestampRef.current;
+      
+      const refreshData = localStorage.getItem('global-refresh');
+      if (refreshData) {
+        try {
+          const data = JSON.parse(refreshData);
+          console.log('🔍 PaidUnpaidLeavesPage: Found global-refresh data:', data, 'Last processed:', lastProcessed);
+          // Only refresh if this is a new refresh event (timestamp changed)
+          if ((data.type === 'leave' || data.type === 'all') && data.timestamp !== lastProcessed) {
+            lastProcessedTimestampRef.current = data.timestamp;
+            console.log('🔄 PaidUnpaidLeavesPage: Detected leave refresh, updating stats...', { type: data.type, timestamp: data.timestamp });
+            if (viewMode === 'yearly') {
+              fetchStats();
+            } else {
+              fetchMonthlyStats();
+            }
+            // Clear the refresh flag after processing
+            localStorage.removeItem('global-refresh');
+            console.log('✅ PaidUnpaidLeavesPage: Stats refresh initiated');
+          } else {
+            console.log('⏭️ PaidUnpaidLeavesPage: Skipping refresh (already processed or wrong type)');
+          }
+        } catch (err) {
+          console.error('❌ PaidUnpaidLeavesPage: Error parsing global refresh data:', err);
+        }
+      }
+      
+      const dashboardRefresh = localStorage.getItem('dashboard-refresh');
+      if (dashboardRefresh) {
+        const timestamp = parseInt(dashboardRefresh, 10);
+        console.log('🔍 PaidUnpaidLeavesPage: Found dashboard-refresh:', timestamp, 'Last processed:', lastProcessed);
+        if (timestamp !== lastProcessed) {
+          lastProcessedTimestampRef.current = timestamp;
+          console.log('🔄 PaidUnpaidLeavesPage: Detected dashboard refresh, updating stats...');
+          if (viewMode === 'yearly') {
+            fetchStats();
+          } else {
+            fetchMonthlyStats();
+          }
+          // Clear the refresh flag after processing
+          localStorage.removeItem('dashboard-refresh');
+          console.log('✅ PaidUnpaidLeavesPage: Stats refresh initiated from dashboard refresh');
+        }
+      }
+    };
+    
+    // Check immediately on mount and then poll every 500ms for faster updates
+    console.log('🔄 PaidUnpaidLeavesPage: Setting up refresh listener...');
+    checkForRefresh();
+    const intervalId = setInterval(() => {
+      checkForRefresh();
+    }, 500); // Check every 500ms for faster response
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(intervalId);
+    };
+  }, [viewMode, fetchStats, fetchMonthlyStats]);
 
   const toggleEmployee = (employeeId: string) => {
     const newExpanded = new Set(expandedEmployees);
@@ -187,15 +288,25 @@ const PaidUnpaidLeavesPage: React.FC = () => {
     setExpandedEmployees(newExpanded);
   };
 
-  const filteredStats = stats.filter(stat => {
-    if (!filters.search) return true;
-    const searchLower = filters.search.toLowerCase();
-    return (
-      stat.employeeName.toLowerCase().includes(searchLower) ||
-      stat.employeeEmail.toLowerCase().includes(searchLower) ||
-      (stat.department && stat.department.toLowerCase().includes(searchLower))
-    );
-  });
+  // Filter stats based on search and employee type
+  const filteredStats = React.useMemo(() => {
+    return stats.filter(stat => {
+      // Filter by employee type
+      if (employeeTypeFilter !== 'all' && stat.employeeType !== employeeTypeFilter) {
+        return false;
+      }
+      // Filter by search
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        return (
+          stat.employeeName.toLowerCase().includes(searchLower) ||
+          stat.employeeEmail.toLowerCase().includes(searchLower) ||
+          (stat.department && stat.department.toLowerCase().includes(searchLower))
+        );
+      }
+      return true;
+    });
+  }, [stats, employeeTypeFilter, filters.search]);
 
   // Get unique departments for filter
   const departments = Array.from(new Set(
@@ -204,16 +315,25 @@ const PaidUnpaidLeavesPage: React.FC = () => {
       : monthlyStats.map(s => s.department).filter(Boolean)
   )) as string[];
 
-  // Filter monthly stats
-  const filteredMonthlyStats = monthlyStats.filter(stat => {
-    if (!filters.search) return true;
-    const searchLower = filters.search.toLowerCase();
-    return (
-      stat.employeeName.toLowerCase().includes(searchLower) ||
-      stat.employeeEmail.toLowerCase().includes(searchLower) ||
-      (stat.department && stat.department.toLowerCase().includes(searchLower))
-    );
-  });
+  // Filter monthly stats based on search and employee type
+  const filteredMonthlyStats = React.useMemo(() => {
+    return monthlyStats.filter(stat => {
+      // Filter by employee type
+      if (employeeTypeFilter !== 'all' && stat.employeeType !== employeeTypeFilter) {
+        return false;
+      }
+      // Filter by search
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        return (
+          stat.employeeName.toLowerCase().includes(searchLower) ||
+          stat.employeeEmail.toLowerCase().includes(searchLower) ||
+          (stat.department && stat.department.toLowerCase().includes(searchLower))
+        );
+      }
+      return true;
+    });
+  }, [monthlyStats, employeeTypeFilter, filters.search]);
 
   // Calculate totals
   const totals = viewMode === 'yearly'
@@ -541,14 +661,25 @@ const PaidUnpaidLeavesPage: React.FC = () => {
         {/* Employee Statistics Table */}
         <Card className="bg-white/90 backdrop-blur-sm border-white/30 shadow-xl">
           <CardHeader>
-            <CardTitle>
-              {viewMode === 'yearly' ? 'Employee Leave Statistics' : 'Monthly Leave Breakdown'}
-            </CardTitle>
-            <CardDescription>
-              {viewMode === 'yearly' 
-                ? 'Click on an employee row to view detailed leave breakdown'
-                : 'Monthly breakdown of paid and unpaid leaves for each employee'}
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>
+                  {viewMode === 'yearly' ? 'Employee Leave Statistics' : 'Monthly Leave Breakdown'}
+                </CardTitle>
+                <CardDescription>
+                  {viewMode === 'yearly' 
+                    ? 'Click on an employee row to view detailed leave breakdown'
+                    : 'Monthly breakdown of paid and unpaid leaves for each employee'}
+                </CardDescription>
+              </div>
+              <Tabs value={employeeTypeFilter} onValueChange={(value) => setEmployeeTypeFilter(value as 'all' | 'onshore' | 'offshore')} className="w-auto">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="onshore">Onshore</TabsTrigger>
+                  <TabsTrigger value="offshore">Offshore</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </CardHeader>
           <CardContent>
             {viewMode === 'yearly' ? (
@@ -560,36 +691,60 @@ const PaidUnpaidLeavesPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* Header Row */}
+                  <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-200 font-semibold text-sm text-slate-700">
+                    <div className="col-span-3 flex items-center h-10">Employee</div>
+                    <div className="col-span-2 flex items-center h-10">Employee ID</div>
+                    <div className="col-span-2 flex items-center h-10">Department</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Paid Days</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Unpaid Days</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Total Days</div>
+                    <div className="col-span-2 flex items-center justify-end h-10">Actions</div>
+                  </div>
+                  {/* Mobile Header */}
+                  <div className="md:hidden grid grid-cols-2 gap-2 p-3 bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-200 font-semibold text-xs text-slate-700">
+                    <div>Employee</div>
+                    <div className="text-right">Days</div>
+                  </div>
                   {filteredStats.map((stat) => (
-                  <div key={stat.employeeId} className="border rounded-lg overflow-hidden">
+                  <div key={stat.employeeId} className="border border-slate-200 rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
                     {/* Main Row */}
                     <div
-                      className="grid grid-cols-12 gap-4 p-4 hover:bg-slate-50 cursor-pointer transition-colors"
+                      className="grid grid-cols-12 gap-4 p-4 hover:bg-slate-50/50 cursor-pointer transition-colors items-center"
                       onClick={() => toggleEmployee(stat.employeeId)}
                     >
-                      <div className="col-span-12 md:col-span-3 flex items-center space-x-3">
+                      <div className="col-span-12 md:col-span-3 flex items-center space-x-3 min-w-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleEmployee(stat.employeeId);
                           }}
-                          className="p-1 hover:bg-slate-200 rounded"
+                          className="p-1.5 hover:bg-slate-200 rounded transition-colors flex-shrink-0"
                         >
                           {expandedEmployees.has(stat.employeeId) ? (
-                            <ChevronDown className="h-4 w-4" />
+                            <ChevronDown className="h-4 w-4 text-slate-600" />
                           ) : (
-                            <ChevronRight className="h-4 w-4" />
+                            <ChevronRight className="h-4 w-4 text-slate-600" />
                           )}
                         </button>
-                        <Avatar className="h-10 w-10">
+                        <Avatar className="h-10 w-10 flex-shrink-0">
                           <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
                             {stat.employeeName.split(' ').map(n => n[0]).join('').toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <p className="font-semibold text-slate-900">{stat.employeeName}</p>
-                          <p className="text-sm text-slate-500">{stat.employeeEmail}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 truncate">{stat.employeeName}</p>
+                          <p className="text-xs text-slate-500 truncate">{stat.employeeEmail}</p>
                         </div>
+                      </div>
+                      <div className="col-span-12 md:col-span-2 flex items-center">
+                        {stat.employeeIdNumber ? (
+                          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                            {stat.employeeIdNumber}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-slate-400 italic">Not assigned</span>
+                        )}
                       </div>
                       <div className="col-span-12 md:col-span-2 flex items-center">
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -597,19 +752,16 @@ const PaidUnpaidLeavesPage: React.FC = () => {
                           {stat.department || 'Unassigned'}
                         </Badge>
                       </div>
-                      <div className="col-span-4 md:col-span-2 text-center">
-                        <p className="text-sm text-slate-600">Paid Days</p>
+                      <div className="col-span-4 md:col-span-1 text-center">
                         <p className="text-lg font-bold text-green-600">{stat.totalPaidDays.toFixed(1)}</p>
                       </div>
-                      <div className="col-span-4 md:col-span-2 text-center">
-                        <p className="text-sm text-slate-600">Unpaid Days</p>
+                      <div className="col-span-4 md:col-span-1 text-center">
                         <p className="text-lg font-bold text-red-600">{stat.totalUnpaidDays.toFixed(1)}</p>
                       </div>
-                      <div className="col-span-4 md:col-span-2 text-center">
-                        <p className="text-sm text-slate-600">Total Days</p>
+                      <div className="col-span-4 md:col-span-1 text-center">
                         <p className="text-lg font-bold text-slate-900">{stat.totalDays.toFixed(1)}</p>
                       </div>
-                      <div className="col-span-12 md:col-span-1 flex items-center justify-end">
+                      <div className="col-span-12 md:col-span-2 flex items-center justify-end">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -722,20 +874,44 @@ const PaidUnpaidLeavesPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4 overflow-x-auto">
+                  {/* Header Row for Monthly View */}
+                  <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-200 font-semibold text-sm text-slate-700">
+                    <div className="col-span-3 flex items-center h-10">Employee</div>
+                    <div className="col-span-2 flex items-center h-10">Employee ID</div>
+                    <div className="col-span-2 flex items-center h-10">Department</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Total Paid</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Total Unpaid</div>
+                    <div className="col-span-1 flex items-center justify-center h-10">Total Days</div>
+                    <div className="col-span-2"></div>
+                  </div>
+                  {/* Mobile Header for Monthly */}
+                  <div className="md:hidden grid grid-cols-2 gap-2 p-3 bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-200 font-semibold text-xs text-slate-700">
+                    <div>Employee</div>
+                    <div className="text-right">Summary</div>
+                  </div>
                   {filteredMonthlyStats.map((stat) => (
-                    <div key={stat.employeeId} className="border rounded-lg overflow-hidden">
+                    <div key={stat.employeeId} className="border border-slate-200 rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
                       {/* Employee Header */}
-                      <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b">
-                        <div className="col-span-12 md:col-span-4 flex items-center space-x-3">
-                          <Avatar className="h-10 w-10">
+                      <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50/50 border-b items-center">
+                        <div className="col-span-12 md:col-span-3 flex items-center space-x-3 min-w-0">
+                          <Avatar className="h-10 w-10 flex-shrink-0">
                             <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
                               {stat.employeeName.split(' ').map(n => n[0]).join('').toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
-                            <p className="font-semibold text-slate-900">{stat.employeeName}</p>
-                            <p className="text-sm text-slate-500">{stat.employeeEmail}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-900 truncate">{stat.employeeName}</p>
+                            <p className="text-xs text-slate-500 truncate">{stat.employeeEmail}</p>
                           </div>
+                        </div>
+                        <div className="col-span-12 md:col-span-2 flex items-center">
+                          {stat.employeeIdNumber ? (
+                            <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                              {stat.employeeIdNumber}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-slate-400 italic">Not assigned</span>
+                          )}
                         </div>
                         <div className="col-span-12 md:col-span-2 flex items-center">
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -743,16 +919,13 @@ const PaidUnpaidLeavesPage: React.FC = () => {
                             {stat.department || 'Unassigned'}
                           </Badge>
                         </div>
-                        <div className="col-span-4 md:col-span-2 text-center">
-                          <p className="text-sm text-slate-600">Total Paid</p>
+                        <div className="col-span-4 md:col-span-1 text-center">
                           <p className="text-lg font-bold text-green-600">{stat.yearlyTotal.paidDays.toFixed(1)}</p>
                         </div>
-                        <div className="col-span-4 md:col-span-2 text-center">
-                          <p className="text-sm text-slate-600">Total Unpaid</p>
+                        <div className="col-span-4 md:col-span-1 text-center">
                           <p className="text-lg font-bold text-red-600">{stat.yearlyTotal.unpaidDays.toFixed(1)}</p>
                         </div>
-                        <div className="col-span-4 md:col-span-2 text-center">
-                          <p className="text-sm text-slate-600">Total Days</p>
+                        <div className="col-span-4 md:col-span-1 text-center">
                           <p className="text-lg font-bold text-slate-900">{stat.yearlyTotal.totalDays.toFixed(1)}</p>
                         </div>
                       </div>
@@ -810,7 +983,12 @@ const PaidUnpaidLeavesPage: React.FC = () => {
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Leave Details - {selectedEmployee?.employeeName}</DialogTitle>
+              <DialogTitle>
+                Leave Details - {selectedEmployee?.employeeName}
+                {selectedEmployee?.employeeIdNumber && (
+                  <span className="text-sm font-normal text-blue-600 ml-2">(ID: {selectedEmployee.employeeIdNumber})</span>
+                )}
+              </DialogTitle>
               <DialogDescription>
                 Complete breakdown of paid and unpaid leaves
               </DialogDescription>

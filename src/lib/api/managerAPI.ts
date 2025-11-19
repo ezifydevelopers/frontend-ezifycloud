@@ -185,6 +185,12 @@ export const managerAPI = {
       body: JSON.stringify(actionData),
     }),
   
+  updateLeaveRequestPaidStatus: (id: string, isPaid: boolean, comments?: string): Promise<ApiResponse<LeaveRequest>> =>
+    apiRequest(`/manager/approvals/${id}/paid-status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isPaid, comments }),
+    }),
+  
   processBulkApprovalAction: (actionData: BulkProcessApprovalActionRequest): Promise<ApiResponse<{ message: string }>> =>
     apiRequest('/manager/approvals/bulk-process', {
       method: 'POST',

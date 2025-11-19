@@ -83,6 +83,7 @@ interface LeaveRequest {
     email: string;
     department: string;
     avatar?: string;
+    employeeId?: string;
   };
   leaveType: string;
   startDate: string;
@@ -403,6 +404,9 @@ const ApprovalsPage: React.FC = () => {
                     </Avatar>
                     <div>
                       <h3 className="text-xl font-semibold text-slate-900">{individualRequest.employee.name}</h3>
+                      {individualRequest.employee.employeeId && (
+                        <p className="text-sm font-medium text-blue-600 mb-1">ID: {individualRequest.employee.employeeId}</p>
+                      )}
                       <p className="text-slate-600">{individualRequest.employee.email}</p>
                       <Badge className={`mt-2 ${getStatusColor(individualRequest.status)}`}>
                         {individualRequest.status.charAt(0).toUpperCase() + individualRequest.status.slice(1)}
@@ -720,6 +724,9 @@ const ApprovalsPage: React.FC = () => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <h3 className="font-semibold text-slate-900">{request.employee.name}</h3>
+                          {request.employee.employeeId && (
+                            <span className="text-xs font-medium text-blue-600">ID: {request.employee.employeeId}</span>
+                          )}
                           <Badge variant="outline" className={`text-xs ${getStatusColor(request.status)}`}>
                             {request.status}
                           </Badge>

@@ -6,9 +6,10 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { adminAPI } from '@/lib/api';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { adminAPI } from '@/lib/api/adminAPI';
 import { useDataRefresh } from '@/hooks/useDataRefresh';
-import { triggerDashboardRefresh } from '@/contexts/DashboardContext';
+import { triggerDashboardRefresh, triggerGlobalDataRefresh } from '@/contexts/DashboardContext';
 import { toast } from '@/hooks/use-toast';
 import LeaveRequestDetails from '@/components/leave/LeaveRequestDetails';
 import LeaveBalanceModal from '@/components/admin/LeaveBalanceModal';
@@ -45,8 +46,21 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [employeeTypeFilter, setEmployeeTypeFilter] = useState<'all' | 'onshore' | 'offshore'>('all');
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
+
+  // Verify adminAPI function exists on mount
+  useEffect(() => {
+    if (!adminAPI || typeof adminAPI.updateLeaveRequestPaidStatus !== 'function') {
+      console.error('adminAPI.updateLeaveRequestPaidStatus is not available:', {
+        adminAPI: adminAPI,
+        hasUpdateLeaveRequestPaidStatus: adminAPI && 'updateLeaveRequestPaidStatus' in adminAPI,
+        adminAPIType: typeof adminAPI,
+        adminAPIKeys: adminAPI ? Object.keys(adminAPI) : []
+      });
+    }
+  }, []);
   const [leaveBalances, setLeaveBalances] = useState<Record<string, LeaveBalance>>({});
   const [loadingBalances, setLoadingBalances] = useState<Record<string, boolean>>({});
   const [showLeaveBalanceModal, setShowLeaveBalanceModal] = useState(false);
@@ -182,6 +196,51 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
     }
   };
 
+  const handleUpdatePaidStatus = async (requestId: string, isPaid: boolean) => {
+    try {
+      // Verify function exists
+      if (!adminAPI.updateLeaveRequestPaidStatus) {
+        throw new Error('updateLeaveRequestPaidStatus function is not available. Please refresh the page.');
+      }
+      
+      setProcessingRequests(prev => new Set(prev).add(requestId));
+      const response = await adminAPI.updateLeaveRequestPaidStatus(requestId, isPaid);
+      
+      if (response.success) {
+        toast({
+          title: 'Status updated',
+          description: `Leave request updated to ${isPaid ? 'paid' : 'unpaid'} successfully`,
+        });
+        
+        await fetchLeaveRequests();
+        triggerDashboardRefresh();
+        // Trigger global refresh for leave data so PaidUnpaidLeavesPage can refresh
+        // Use a small delay to ensure backend has processed the update
+        console.log('🔄 LeaveRequestsTable: Triggering global refresh for leave data...');
+        setTimeout(() => {
+          triggerGlobalDataRefresh('leave');
+          console.log('✅ LeaveRequestsTable: Global refresh triggered');
+        }, 100);
+        onRefresh?.();
+      } else {
+        throw new Error(response.message || 'Failed to update paid status');
+      }
+    } catch (error: unknown) {
+      console.error('Error updating paid status:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update paid status',
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingRequests(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(requestId);
+        return newSet;
+      });
+    }
+  };
+
   const filteredRequests = leaveRequests.filter(request => {
     const matchesSearch = 
       request.employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -190,7 +249,9 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
     
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
     
-    return matchesSearch && matchesStatus;
+    const matchesEmployeeType = employeeTypeFilter === 'all' || request.employee.employeeType === employeeTypeFilter;
+    
+    return matchesSearch && matchesStatus && matchesEmployeeType;
   });
 
   const getStatusColor = (status: string) => {
@@ -347,12 +408,21 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
       {/* Leave Requests Table */}
       <Card className="bg-white/90 backdrop-blur-sm border-white/20 shadow-xl">
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <CalendarDays className="h-5 w-5 text-blue-600" />
-            </div>
-            <span className="text-xl">Leave Requests ({filteredRequests.length})</span>
-          </CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <CalendarDays className="h-5 w-5 text-blue-600" />
+              </div>
+              <span className="text-xl">Leave Requests ({filteredRequests.length})</span>
+            </CardTitle>
+            <Tabs value={employeeTypeFilter} onValueChange={(value) => setEmployeeTypeFilter(value as 'all' | 'onshore' | 'offshore')} className="w-auto">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="onshore">Onshore</TabsTrigger>
+                <TabsTrigger value="offshore">Offshore</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -365,6 +435,7 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                 <TableHeader>
                   <TableRow className="border-slate-200/50">
                     <TableHead className="font-semibold">Employee</TableHead>
+                    <TableHead className="font-semibold">Employee ID</TableHead>
                     <TableHead className="font-semibold">Employee Type</TableHead>
                     <TableHead className="font-semibold">Leave Type</TableHead>
                     <TableHead className="font-semibold">Dates</TableHead>
@@ -394,6 +465,15 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                             <p className="text-sm text-slate-500">{request.employee.department}</p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {request.employee?.employeeId ? (
+                          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                            {request.employee.employeeId}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-slate-400 italic">Not assigned</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {request.employee.employeeType ? (
@@ -509,6 +589,21 @@ const LeaveRequestsTable: React.FC<LeaveRequestsTableProps> = ({
                                 {processingRequests.has(request.id) ? 'Rejecting...' : 'Reject'}
                               </Button>
                             </>
+                          )}
+                          {request.status === 'approved' && (
+                            <Select
+                              value={request.isPaid === false ? 'unpaid' : 'paid'}
+                              onValueChange={(value) => handleUpdatePaidStatus(request.id, value === 'paid')}
+                              disabled={processingRequests.has(request.id)}
+                            >
+                              <SelectTrigger className="h-8 w-28 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="paid">Paid</SelectItem>
+                                <SelectItem value="unpaid">Unpaid</SelectItem>
+                              </SelectContent>
+                            </Select>
                           )}
                           <Button
                             size="sm"

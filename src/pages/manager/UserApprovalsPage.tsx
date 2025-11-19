@@ -179,6 +179,7 @@ const UserApprovalsPage: React.FC = () => {
                     <TableRow>
                       <TableHead>User</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Employee ID</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Requested</TableHead>
@@ -207,6 +208,13 @@ const UserApprovalsPage: React.FC = () => {
                             <Mail className="h-4 w-4 text-slate-400" />
                             <span className="text-sm">{user.email}</span>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {user.employeeId ? (
+                            <span className="text-sm font-medium text-blue-600">{user.employeeId}</span>
+                          ) : (
+                            <span className="text-sm text-slate-400">N/A</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">

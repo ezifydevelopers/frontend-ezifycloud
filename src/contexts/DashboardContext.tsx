@@ -479,5 +479,13 @@ export const setCachedEmployees = (userRole: string, params: any, data: any): vo
 
 // Global refresh trigger function
 export const triggerGlobalDataRefresh = (type: 'leave' | 'employee' | 'team' | 'all') => {
-  localStorage.setItem('global-refresh', JSON.stringify({ type, timestamp: Date.now() }));
+  const refreshData = { type, timestamp: Date.now() };
+  console.log('🚀 triggerGlobalDataRefresh: Setting global-refresh:', refreshData);
+  localStorage.setItem('global-refresh', JSON.stringify(refreshData));
+  // Also trigger a storage event manually for same-tab communication
+  window.dispatchEvent(new StorageEvent('storage', {
+    key: 'global-refresh',
+    newValue: JSON.stringify(refreshData),
+    storageArea: localStorage
+  }));
 };

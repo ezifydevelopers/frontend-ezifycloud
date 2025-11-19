@@ -47,6 +47,7 @@ interface EmployeeProfile {
   avatar: string;
   bio: string;
   emergencyContact: string;
+  employeeId?: string;
   skills?: string[];
   certifications?: string[];
   achievements?: string[];
@@ -107,6 +108,7 @@ const EmployeeProfilePage: React.FC = () => {
           bio: (data.bio as string) || 'No bio available',
           skills: (data.skills as string[]) || [],
           emergencyContact: (data.emergencyContact as string) || '',
+          employeeId: (data.employeeId as string) || undefined,
           certifications: [], // Not available in backend yet
           achievements: [], // Not available in backend yet
           leaveBalance: {
@@ -304,6 +306,9 @@ const EmployeeProfilePage: React.FC = () => {
                 </h1>
                 <p className="text-slate-600 text-lg font-medium">{profile.position}</p>
                 <p className="text-slate-500">{profile.department} • {profile.manager}</p>
+                {profile.employeeId && (
+                  <p className="text-slate-500 text-sm">Employee ID: <span className="font-semibold text-slate-700">{profile.employeeId}</span></p>
+                )}
                 <div className="flex items-center gap-3 mt-3">
                   <Badge className="bg-green-100 text-green-800 border-green-200 px-3 py-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>

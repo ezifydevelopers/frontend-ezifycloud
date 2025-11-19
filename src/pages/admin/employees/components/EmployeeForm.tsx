@@ -30,6 +30,12 @@ import { APP_CONFIG } from '@/lib/config';
 const employeeSchema = z.object({
   name: z.string().min(APP_CONFIG.UI.VALIDATION.NAME_MIN_LENGTH, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
+  employeeId: z.string()
+    .min(3, 'Employee ID must be at least 3 characters')
+    .max(20, 'Employee ID cannot exceed 20 characters')
+    .regex(/^[A-Za-z0-9_-]+$/, 'Employee ID can only contain letters, numbers, hyphens, and underscores')
+    .optional()
+    .nullable(),
   password: z.string().optional(),
   role: z.enum(['admin', 'manager', 'employee']),
   department: z.string().min(1, 'Please select a department'),
@@ -77,6 +83,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
     defaultValues: {
       name: employee?.name || '',
       email: employee?.email || '',
+      employeeId: employee?.employeeId || null,
       role: employee?.role || 'employee',
       department: employee?.department || '',
       managerId: employee?.managerId || undefined,
@@ -110,6 +117,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
         const updateData = {
           name: data.name,
           email: data.email,
+          employeeId: data.employeeId,
           role: data.role,
           department: data.department,
           managerId: data.managerId,
@@ -149,6 +157,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
           name: data.name!,
           email: data.email!,
           password: data.password!,
+          employeeId: data.employeeId,
           role: data.role!,
           department: data.department!,
           managerId: data.managerId,
@@ -220,6 +229,23 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({
                 <p className="text-sm text-destructive">{errors.email.message}</p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="employeeId">Employee ID</Label>
+            <Input
+              id="employeeId"
+              placeholder="e.g., EMP001, EZ-2024-001"
+              value={watch('employeeId') || ''}
+              onChange={(e) => setValue('employeeId', e.target.value || null)}
+              className={errors.employeeId ? 'border-destructive' : ''}
+            />
+            {errors.employeeId && (
+              <p className="text-sm text-destructive">{errors.employeeId.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Optional: Unique identifier for the employee (letters, numbers, hyphens, and underscores only)
+            </p>
           </div>
 
           {!isEditing && (

@@ -549,9 +549,20 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                       )}
                     </div>
                   </div>
-                  <p className="text-slate-600 text-base lg:text-lg">
-                    Welcome back, <span className="font-semibold text-blue-600">{user?.name}</span>. Here's your personal overview.
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-slate-600 text-base lg:text-lg">
+                      Welcome back, <span className="font-semibold text-blue-600">{user?.name}</span>
+                    </p>
+                    {user?.employeeId && (
+                      <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 transition-colors">
+                        <User className="h-3 w-3 mr-1" />
+                        ID: {user.employeeId}
+                      </Badge>
+                    )}
+                    <p className="text-slate-600 text-base lg:text-lg">
+                      . Here's your personal overview.
+                    </p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <Calendar className="h-4 w-4" />
@@ -796,6 +807,15 @@ const EmployeeDashboard: React.FC<WithDashboardDataProps> = ({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
+                      {user?.employeeId && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">Employee ID</p>
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-slate-500" />
+                            <p className="text-lg font-semibold">{user.employeeId}</p>
+                          </div>
+                        </div>
+                      )}
                       {user?.employeeType && (
                         <div>
                           <p className="text-sm font-medium text-muted-foreground mb-1">Employee Type</p>

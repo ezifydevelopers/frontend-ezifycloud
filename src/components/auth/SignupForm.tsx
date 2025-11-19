@@ -46,6 +46,12 @@ import { handleFormValidationErrors } from '@/lib/formUtils';
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
+  employeeId: z.string()
+    .min(3, 'Employee ID must be at least 3 characters')
+    .max(20, 'Employee ID cannot exceed 20 characters')
+    .regex(/^[A-Za-z0-9_-]+$/, 'Employee ID can only contain letters, numbers, hyphens, and underscores')
+    .optional()
+    .nullable(),
   password: z.string()
     .min(6, 'Password must be at least 6 characters')
     .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])/, 'Password must contain at least one lowercase letter, one uppercase letter, and one number'),
@@ -135,6 +141,7 @@ const SignupForm: React.FC = () => {
         department: data.department,
         role: 'employee' as const, // Default role for self-signup
         manager_id: null, // No manager assignment during signup
+        employeeId: data.employeeId || null,
         employeeType: data.employeeType || null,
         region: data.region || null,
         timezone: data.timezone || null,
@@ -329,6 +336,30 @@ const SignupForm: React.FC = () => {
                       {errors.email.message}
                     </p>
                   )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="employeeId" className="text-sm font-medium text-slate-700">
+                    Employee ID <span className="text-slate-400 text-xs">(Optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                    <Input
+                      id="employeeId"
+                      placeholder="EMP001"
+                      {...register('employeeId')}
+                      className={`pl-10 bg-white/50 border-slate-200/50 focus:border-blue-300 focus:ring-blue-200 ${
+                        errors.employeeId ? 'border-red-300 focus:border-red-300 focus:ring-red-200' : ''
+                      }`}
+                    />
+                  </div>
+                  {errors.employeeId && (
+                    <p className="text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.employeeId.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500">Unique identifier to help distinguish employees with the same name</p>
                 </div>
 
                 <div className="space-y-2">

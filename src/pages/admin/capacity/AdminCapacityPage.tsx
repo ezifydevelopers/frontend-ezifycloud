@@ -276,6 +276,9 @@ const AdminCapacityPage: React.FC<AdminCapacityPageProps> = ({
                           </Avatar>
                           <div>
                             <p className="font-semibold text-slate-900">{employee.name}</p>
+                            {employee.employeeId && (
+                              <p className="text-xs font-medium text-blue-600 mb-1">ID: {employee.employeeId}</p>
+                            )}
                             <p className="text-sm text-slate-600">{employee.department} • {employee.position}</p>
                             <p className="text-xs text-slate-500">{employee.email}</p>
                           </div>

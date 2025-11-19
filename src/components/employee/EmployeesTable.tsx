@@ -481,6 +481,7 @@ const EmployeesTable: React.FC<EmployeesTableProps> = ({
                       />
                     </TableHead>
                     <TableHead>Employee</TableHead>
+                    <TableHead>Employee ID</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
@@ -514,6 +515,13 @@ const EmployeesTable: React.FC<EmployeesTableProps> = ({
                             <p className="text-sm text-slate-500">{employee.email}</p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {employee.employeeId ? (
+                          <span className="text-sm font-medium text-blue-600">{employee.employeeId}</span>
+                        ) : (
+                          <span className="text-sm text-slate-400">N/A</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{employee.department}</Badge>

@@ -608,6 +608,11 @@ const EmployeesPage: React.FC = () => {
                          (filters.status === 'active' && employee.isActive) ||
                          (filters.status === 'inactive' && !employee.isActive);
     
+    // Filter by employee type
+    const matchesEmployeeType = filters.employeeType === 'all' || 
+                                !filters.employeeType || 
+                                employee.employeeType === filters.employeeType;
+    
     // Filter by active tab (probation status)
     let matchesProbationTab = true;
     if (activeTab === 'probation') {
@@ -624,7 +629,7 @@ const EmployeesPage: React.FC = () => {
     }
     // 'all' tab shows everyone
     
-    const matches = matchesSearch && matchesDepartment && matchesRole && matchesStatus && matchesProbationTab;
+    const matches = matchesSearch && matchesDepartment && matchesRole && matchesStatus && matchesEmployeeType && matchesProbationTab;
     
     return matches;
   });
@@ -919,6 +924,9 @@ const EmployeesPage: React.FC = () => {
                     )}
                   </div>
                 </TableHead>
+                <TableHead className="font-semibold" role="columnheader">
+                  Employee ID
+                </TableHead>
                 <TableHead 
                   className="font-semibold cursor-pointer hover:bg-slate-50"
                   onClick={() => {
@@ -1004,9 +1012,15 @@ const EmployeesPage: React.FC = () => {
                       </Avatar>
                       <div>
                         <p className="font-semibold text-slate-900">{employee.name}</p>
-                        <p className="text-sm text-slate-500">ID: {employee.id.slice(0, 8)}...</p>
                       </div>
                     </div>
+                  </TableCell>
+                  <TableCell role="cell">
+                    {employee.employeeId ? (
+                      <span className="text-sm font-medium text-blue-600">{employee.employeeId}</span>
+                    ) : (
+                      <span className="text-sm text-slate-400">N/A</span>
+                    )}
                   </TableCell>
                   <TableCell role="cell">
                     <Badge className={getDepartmentColor(employee.department || '')}>

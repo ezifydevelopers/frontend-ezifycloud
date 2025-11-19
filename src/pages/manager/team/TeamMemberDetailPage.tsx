@@ -66,6 +66,7 @@ interface TeamMember {
   joinDate: string;
   currentProjects: string[];
   manager: string;
+  employeeId?: string;
   directReports?: number;
   lastActive?: string;
   location?: string;
@@ -256,6 +257,12 @@ const TeamMemberDetailPage: React.FC = () => {
                     <label className="text-sm font-medium text-muted-foreground">Full Name</label>
                     <p className="text-lg font-semibold">{member.name}</p>
                   </div>
+                  {member.employeeId && (
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Employee ID</label>
+                      <p className="text-lg font-semibold">{member.employeeId}</p>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Position</label>
                     <p className="text-lg font-semibold">{member.position}</p>

@@ -162,12 +162,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
-    // In development, provide a helpful error message
-    if (process.env.NODE_ENV === 'development') {
-      console.error('useAuth must be used within an AuthProvider. Make sure AuthProvider wraps your component tree.');
-    }
-    // Return a default context to prevent crashes during development
-    // This can happen during React Strict Mode double-rendering
+    // Return a default context to prevent crashes
+    // This can happen during React Strict Mode double-rendering or during initial mount
+    // In React Strict Mode (development), components render twice intentionally
+    // The first render might not have context available yet, which is expected behavior
+    // We don't log errors here to avoid false positives from React Strict Mode
     return {
       user: null,
       isLoading: true,

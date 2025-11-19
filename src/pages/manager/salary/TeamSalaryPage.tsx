@@ -405,6 +405,7 @@ const TeamSalaryPage: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Team Member</TableHead>
+                    <TableHead>Employee ID</TableHead>
                     <TableHead>Base Salary</TableHead>
                     <TableHead>Hourly Rate</TableHead>
                     <TableHead>Effective Date</TableHead>
@@ -420,6 +421,13 @@ const TeamSalaryPage: React.FC = () => {
                           <div className="font-medium">{salary.user.name}</div>
                           <div className="text-sm text-gray-500">{salary.user.email}</div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {salary.user.employeeId ? (
+                          <span className="text-sm font-medium text-blue-600">{salary.user.employeeId}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">N/A</span>
+                        )}
                       </TableCell>
                       <TableCell>{formatCurrency(salary.baseSalary)}</TableCell>
                       <TableCell>

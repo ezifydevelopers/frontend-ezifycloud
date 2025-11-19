@@ -654,6 +654,9 @@ const UserApprovalsPage: React.FC = () => {
                           <SortIcon field="email" />
                         </div>
                       </TableHead>
+                      <TableHead className="font-semibold">
+                        Employee ID
+                      </TableHead>
                       <TableHead 
                         className="cursor-pointer hover:bg-gray-100/50 transition-colors font-semibold"
                         onClick={() => handleSort('role')}
@@ -711,6 +714,13 @@ const UserApprovalsPage: React.FC = () => {
                             <Mail className="h-4 w-4 text-muted-foreground" />
                             {user.email}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {user.employeeId ? (
+                            <span className="text-sm font-medium text-blue-600">{user.employeeId}</span>
+                          ) : (
+                            <span className="text-sm text-gray-400">N/A</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge className={`${getRoleBadgeColor(user.role)} border font-medium`}>

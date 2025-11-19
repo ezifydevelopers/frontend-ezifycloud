@@ -207,6 +207,13 @@ export const adminAPI = {
       body: JSON.stringify({ status, comments }),
     }),
   
+  // Update paid/unpaid status of an approved leave request
+  updateLeaveRequestPaidStatus: (id: string, isPaid: boolean, comments?: string): Promise<ApiResponse<LeaveRequest>> =>
+    apiRequest(`/admin/leave-requests/${id}/paid-status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isPaid, comments }),
+    }),
+  
   bulkUpdateLeaveRequests: (requestIds: string[], action: string, comments?: string): Promise<ApiResponse<{ message: string }>> =>
     apiRequest('/admin/leave-requests/bulk-update', {
       method: 'POST',

@@ -53,6 +53,7 @@ interface LeaveRequest {
   days: number;
   isHalfDay: boolean;
   halfDayPeriod?: string;
+  isPaid?: boolean;
   submittedAt: string;
   reviewedAt?: string;
   reviewedBy?: string;
@@ -66,10 +67,12 @@ interface TeamLeaveRequest extends LeaveRequest {
     email: string;
     department: string;
     avatar?: string;
+    employeeId?: string;
   };
   priority?: 'low' | 'medium' | 'high';
   emergencyContact?: string;
   workHandover?: string;
+  totalDays?: number;
 }
 
 const ManagerLeaveManagement: React.FC = () => {
@@ -210,6 +213,37 @@ const ManagerLeaveManagement: React.FC = () => {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to approve request',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePaidStatus = async (requestId: string, isPaid: boolean) => {
+    try {
+      setLoading(true);
+      const response = await managerAPI.updateLeaveRequestPaidStatus(requestId, isPaid);
+      
+      if (response.success) {
+        toast({
+          title: 'Status updated',
+          description: `Leave request updated to ${isPaid ? 'paid' : 'unpaid'} successfully`,
+        });
+        await fetchTeamLeaveRequests();
+        // Trigger global refresh for leave data so PaidUnpaidLeavesPage can refresh
+        // Use a small delay to ensure backend has processed the update
+        setTimeout(() => {
+          triggerGlobalRefresh('leave');
+        }, 100);
+      } else {
+        throw new Error(response.message || 'Failed to update paid status');
+      }
+    } catch (error) {
+      console.error('Error updating paid status:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update paid status',
         variant: 'destructive',
       });
     } finally {
@@ -722,6 +756,9 @@ const ManagerLeaveManagement: React.FC = () => {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-2">
                                   <h3 className="font-semibold text-slate-900">{request.employee?.name || 'Unknown'}</h3>
+                                  {request.employee?.employeeId && (
+                                    <span className="text-xs font-medium text-blue-600">ID: {request.employee.employeeId}</span>
+                                  )}
                                   <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700">
                                     {request.employee?.department || 'N/A'}
                                   </Badge>
@@ -775,6 +812,21 @@ const ManagerLeaveManagement: React.FC = () => {
                                     Approve
                                   </Button>
                                 </>
+                              )}
+                              {request.status === 'approved' && (
+                                <Select
+                                  value={request.isPaid === false ? 'unpaid' : 'paid'}
+                                  onValueChange={(value) => handleUpdatePaidStatus(request.id, value === 'paid')}
+                                  disabled={loading}
+                                >
+                                  <SelectTrigger className="h-8 w-28 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               )}
                               {request.status !== 'pending' && (
                                 <div className="text-right">

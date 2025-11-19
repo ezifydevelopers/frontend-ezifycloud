@@ -111,6 +111,26 @@ import UserApprovalsPage from "@/pages/admin/UserApprovalsPage";
 
 const queryClient = new QueryClient();
 
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+    <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
+      <AuthProvider>
+        <DashboardProvider>
+          <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AppRoutes />
+        </BrowserRouter>
+        </TooltipProvider>
+      </DashboardProvider>
+    </AuthProvider>
+    </ThemeProvider>
+  </QueryClientProvider>
+  );
+};
+
 // RoleBasedRedirect component - must be used inside AuthProvider
 const RoleBasedRedirect: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -146,17 +166,10 @@ const RoleBasedRedirect: React.FC = () => {
   }
 };
 
-const App = () => {
+// AppRoutes component - contains all routes and must be inside AuthProvider
+const AppRoutes: React.FC = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light">
-      <AuthProvider>
-        <DashboardProvider>
-          <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Routes>
+    <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<LoginForm />} />
             <Route path="/signup" element={<SignupForm />} />
@@ -664,13 +677,7 @@ const App = () => {
             <Route path="/pending-approval" element={<PendingApprovalPage />} />
             <Route path="/access-rejected" element={<AccessRejectedPage />} />
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-        </TooltipProvider>
-      </DashboardProvider>
-    </AuthProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+    </Routes>
   );
 };
 

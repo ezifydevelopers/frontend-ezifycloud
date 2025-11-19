@@ -96,6 +96,7 @@ interface TeamMember {
   position: string;
   avatar?: string;
   status: 'active' | 'on-leave' | 'offline';
+  employeeId?: string;
   leaveBalance: {
     annual: number;
     sick: number;
@@ -437,6 +438,11 @@ const TeamOverviewPage: React.FC = () => {
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">{member.position}</p>
                       <div className="flex items-center space-x-6 text-sm text-muted-foreground">
+                        {member.employeeId && (
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-blue-600">ID: {member.employeeId}</span>
+                          </div>
+                        )}
                         <div className="flex items-center space-x-2">
                           <Building2 className="h-4 w-4" />
                           <span>{member.department}</span>

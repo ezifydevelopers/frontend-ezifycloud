@@ -7,6 +7,7 @@ export interface LeaveRequest {
     id: string;
     name: string;
     email: string;
+    employeeId?: string;
     department: string;
     avatar?: string;
     employeeType?: 'onshore' | 'offshore' | null;
