@@ -1,0 +1,136 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - master
+    paths:
+      - 'frontend-ezifycloud/**'
+      - '.github/workflows/frontend-deploy.yml'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+      - master
+    paths:
+      - 'frontend-ezifycloud/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  build-and-test:
+    name: Build and Test Frontend
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./frontend-ezifycloud
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend-ezifycloud/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://localhost:5000' }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend-ezifycloud/dist
+          retention-days: 7
+
+  deploy:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend-ezifycloud/dist
+
+      # Option 1: Deploy to Vercel
+      - name: Deploy to Vercel
+        if: ${{ secrets.VERCEL_TOKEN }}
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          working-directory: ./frontend-ezifycloud
+
+      # Option 2: Deploy to Netlify (uncomment if using Netlify)
+      # - name: Deploy to Netlify
+      #   if: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #   uses: netlify/actions/cli@master
+      #   env:
+      #     NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #     NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      #   with:
+      #     args: deploy --dir=frontend-ezifycloud/dist --prod
+
+      # Option 3: Deploy to AWS S3 + CloudFront (uncomment if using AWS)
+      # - name: Configure AWS credentials
+      #   if: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      #
+      # - name: Deploy to S3
+      #   if: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #   run: |
+      #     aws s3 sync frontend-ezifycloud/dist s3://${{ secrets.S3_BUCKET_NAME }} --delete
+      #
+      # - name: Invalidate CloudFront
+      #   if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+      #   run: |
+      #     aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+
+      # Option 4: Deploy to GitHub Pages (uncomment if using GitHub Pages)
+      # - name: Deploy to GitHub Pages
+      #   uses: peaceiris/actions-gh-pages@v3
+      #   if: github.ref == 'refs/heads/main'
+      #   with:
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     publish_dir: ./frontend-ezifycloud/dist
+
