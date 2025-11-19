@@ -43,7 +43,15 @@ You can also trigger the deployment manually:
 
 - **SSH Connection Failed**: Check that `SSH_KEY` secret is correctly set
 - **Build Failed**: Check Node.js version on server (should be 18.x or higher)
-- **Nginx Not Restarting**: Check nginx configuration and permissions
+- **Nginx Not Restarting**: 
+  - The build completes successfully even if nginx restart fails
+  - To enable automatic nginx restart, configure passwordless sudo on the server:
+    ```bash
+    sudo visudo
+    # Add this line:
+    leavesystem ALL=(ALL) NOPASSWD: /bin/systemctl restart nginx
+    ```
+  - Or restart nginx manually after deployment: `sudo systemctl restart nginx`
 - **Build Files Not Updating**: Verify the build output directory matches nginx configuration
 
 ## Nginx Configuration
