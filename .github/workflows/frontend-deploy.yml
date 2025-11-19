@@ -4,45 +4,36 @@ on:
   push:
     branches:
       - main
-      - production
+      - develop
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Staging deployment
-      - name: Deploy to production VPS
-        if: github.ref == 'refs/heads/production'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /home/production/apps/production/trainingportalfrontend
-            git fetch --all
-            git reset --hard origin/production
-            git pull origin production
-            npm install
-            npm run build
-            sudo systemctl restart nginx
-
-      # Production deployment
-      - name: Deploy to Production VPS
-        if: github.ref == 'refs/heads/main'
+      - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            cd /home/dev/apps/trainingportalfrontend
+            cd ~/apps/frontend-ezifycloud
+            
+            # Pull latest changes
             git fetch --all
             git reset --hard origin/main
             git pull origin main
-            npm install
+            
+            # Install dependencies
+            npm ci
+            
+            # Build application
             npm run build
+            
+            # Restart nginx to serve new build
             sudo systemctl restart nginx
