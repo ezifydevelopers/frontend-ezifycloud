@@ -321,12 +321,12 @@ const LoginForm: React.FC = () => {
                       Remember me
                     </Label>
                   </div>
-                  <Link
+                  {/* <Link
                     to="/forgot-password"
                     className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
                   >
                     Forgot Password?
-                  </Link>
+                  </Link> */}
                 </div>
 
                 <Button 
